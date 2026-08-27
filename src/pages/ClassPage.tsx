@@ -6,6 +6,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { fetchClass, updateClass } from '../services/classes'
 import { createDocument, fetchDocuments } from '../services/documents'
 import { formatRelativeTime } from '../lib/formatDate'
+import { MenuButton } from '../components/ui/MenuButton'
+import { RenameClassDialog } from '../components/RenameClassDialog'
+import { deleteClass } from '../services/classes'
+import { deleteDocument } from '../services/documents'
 import type { ClassRow, DocumentListItem } from '../types/database'
 
 export default function ClassPage() {
@@ -16,6 +20,7 @@ export default function ClassPage() {
   const [documents, setDocuments] = useState<DocumentListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [professor, setProfessor] = useState('')
+  const [renameOpen, setRenameOpen] = useState(false)
 
   const load = useCallback(async () => {
     if (!classId) return
@@ -55,6 +60,41 @@ export default function ClassPage() {
     }
   }
 
+  async function handleRename(name: string) {
+    if (!classId || !klass) return
+    await updateClass(classId, { name })
+    setKlass({ ...klass, name })
+  }
+
+  async function handleDeleteClass() {
+    if (!classId || !klass) return
+    const confirmed = window.confirm(
+      `Delete "${klass.name}" and all of its notes? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    try {
+      await deleteClass(classId)
+      navigate('/classes', { replace: true })
+    } catch (caught) {
+      console.error('[ClassPage] failed to delete class:', caught)
+    }
+  }
+
+  async function handleDeleteDocument(documentId: string, docTitle: string) {
+    const confirmed = window.confirm(
+      `Delete "${docTitle || 'Untitled note'}"? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    try {
+      await deleteDocument(documentId)
+      await load()
+    } catch (caught) {
+      console.error('[ClassPage] failed to delete note:', caught)
+    }
+  }
+
   if (loading) return null
   if (!klass) return <div className="p-6 text-ink-muted">Class not found.</div>
 
@@ -66,7 +106,20 @@ export default function ClassPage() {
           ← My classes
         </Link>
 
-        <h1 className="mt-6 text-2xl font-medium text-ink">{klass.name}</h1>
+        <div className="mt-6 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-medium text-ink">{klass.name}</h1>
+          <MenuButton
+            label="Class options"
+            items={[
+              { label: 'Rename class', onSelect: () => setRenameOpen(true) },
+              {
+                label: 'Delete class',
+                destructive: true,
+                onSelect: () => void handleDeleteClass(),
+              },
+            ]}
+          />
+        </div>
 
         <div className="mt-2 flex items-center gap-2">
           <label htmlFor="professor" className="text-sm text-ink-muted">
@@ -108,21 +161,38 @@ export default function ClassPage() {
         ) : (
           <ul className="mt-4 divide-y divide-line border-y border-line">
             {documents.map((doc) => (
-              <li key={doc.id}>
+              <li key={doc.id} className="flex items-center gap-2">
                 <Link
                   to={`/classes/${klass.id}/documents/${doc.id}`}
-                  className="flex items-center justify-between px-1 py-3 transition-colors hover:bg-surface-hover"
+                  className="flex flex-1 items-center justify-between px-1 py-3 transition-colors hover:bg-surface-hover"
                 >
                   <span className="text-ink">{doc.title || 'Untitled note'}</span>
                   <span className="text-sm text-ink-faint">
                     {formatRelativeTime(doc.updated_at)}
                   </span>
                 </Link>
+                <MenuButton
+                  label={`Options for ${doc.title || 'Untitled note'}`}
+                  items={[
+                    {
+                      label: 'Delete note',
+                      destructive: true,
+                      onSelect: () => void handleDeleteDocument(doc.id, doc.title),
+                    },
+                  ]}
+                />
               </li>
             ))}
           </ul>
         )}
       </main>
+
+      <RenameClassDialog
+        open={renameOpen}
+        currentName={klass.name}
+        onClose={() => setRenameOpen(false)}
+        onRename={handleRename}
+      />
     </div>
   )
 }
