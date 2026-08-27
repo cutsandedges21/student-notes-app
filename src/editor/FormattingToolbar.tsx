@@ -1,9 +1,83 @@
 import type { Editor } from '@tiptap/react'
+import { useCallback, useEffect, useRef, type KeyboardEvent } from 'react'
 import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered,
   ListChecks, Quote, Minus, Undo2, Redo2,
 } from 'lucide-react'
 import { cn } from '../lib/cn'
+
+/**
+ * Roving tabindex for the `role="toolbar"` container.
+ *
+ * The toolbar pattern promises assistive technology one tab stop with arrow
+ * keys moving between controls. Buttons are managed here; the text-style
+ * `<select>` is deliberately excluded, because Left/Right natively change a
+ * select's value and intercepting that would break it. The select keeps its
+ * own tab stop instead.
+ *
+ * Disabled buttons (undo/redo when unavailable) are skipped, and tabindex is
+ * reapplied on every render because that disabled set changes as you type.
+ */
+function useRovingToolbar(containerRef: React.RefObject<HTMLDivElement | null>) {
+  const allButtons = useCallback(
+    () =>
+      Array.from(
+        containerRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+      ),
+    [containerRef],
+  )
+
+  const buttons = useCallback(
+    () => allButtons().filter((button) => !button.disabled),
+    [allButtons],
+  )
+
+  useEffect(() => {
+    const enabled = buttons()
+    const focused = enabled.findIndex((item) => item === document.activeElement)
+    const active = enabled[focused === -1 ? 0 : focused]
+
+    // Disabled buttons are set to -1 too. They are already unfocusable, but a
+    // <button> defaults to tabIndex 0, so leaving them would make "exactly one
+    // tab stop" false as an inspectable property of the DOM.
+    allButtons().forEach((item) => {
+      item.tabIndex = item === active ? 0 : -1
+    })
+  })
+
+  return useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      const items = buttons()
+      const current = items.indexOf(document.activeElement as HTMLButtonElement)
+      if (current === -1 || items.length === 0) return
+
+      let next: number
+      switch (event.key) {
+        case 'ArrowRight':
+          next = (current + 1) % items.length
+          break
+        case 'ArrowLeft':
+          next = (current - 1 + items.length) % items.length
+          break
+        case 'Home':
+          next = 0
+          break
+        case 'End':
+          next = items.length - 1
+          break
+        default:
+          return
+      }
+
+      event.preventDefault()
+      items.forEach((item, index) => {
+        item.tabIndex = index === next ? 0 : -1
+      })
+      items[next].focus()
+    },
+    [buttons],
+  )
+}
 
 interface FormattingToolbarProps {
   editor: Editor | null
@@ -45,6 +119,9 @@ const TEXT_STYLES = [
 ] as const
 
 export function FormattingToolbar({ editor }: FormattingToolbarProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const handleKeyDown = useRovingToolbar(containerRef)
+
   if (!editor) return null
 
   const activeLevel =
@@ -52,8 +129,10 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
 
   return (
     <div
+      ref={containerRef}
       role="toolbar"
       aria-label="Text formatting"
+      onKeyDown={handleKeyDown}
       className="flex items-center gap-1 overflow-x-auto border-b border-line bg-surface px-4 py-1.5"
     >
       <ToolButton

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { DocumentEditor } from './DocumentEditor'
 
 const paragraph = (text: string) => ({
@@ -75,5 +76,47 @@ describe('DocumentEditor', () => {
     expect(screen.getByLabelText('Note content')).toHaveTextContent(
       'Newer content from another tab',
     )
+  })
+
+  // role="toolbar" promises assistive technology a single tab stop with arrow
+  // navigation between controls. Without it the role misrepresents the widget.
+  describe('toolbar keyboard navigation', () => {
+    const renderToolbar = () =>
+      render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('Text')}
+          onChange={vi.fn()}
+        />,
+      )
+
+    it('moves focus to the next control with ArrowRight', async () => {
+      renderToolbar()
+      screen.getByRole('button', { name: 'Bold' }).focus()
+
+      await userEvent.keyboard('{ArrowRight}')
+
+      expect(screen.getByRole('button', { name: 'Italic' })).toHaveFocus()
+    })
+
+    it('moves focus to the previous control with ArrowLeft', async () => {
+      renderToolbar()
+      screen.getByRole('button', { name: 'Italic' }).focus()
+
+      await userEvent.keyboard('{ArrowLeft}')
+
+      expect(screen.getByRole('button', { name: 'Bold' })).toHaveFocus()
+    })
+
+    it('exposes a single tab stop, so Tab does not walk every button', () => {
+      renderToolbar()
+
+      const tabbable = screen
+        .getAllByRole('button')
+        .filter((button) => button.tabIndex === 0)
+
+      expect(tabbable).toHaveLength(1)
+    })
   })
 })
