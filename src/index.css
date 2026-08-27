@@ -19,3 +19,79 @@
     @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface;
   }
 }
+
+/*
+ * Editor typography for Tiptap/ProseMirror content.
+ *
+ * Deliberately NOT wrapped in `@layer components`: Tailwind v3's JIT purge
+ * treats every class name referenced inside a `@layer` block as a "content
+ * candidate" and strips the rule from production output unless that exact
+ * string is found in a file matched by `content` in tailwind.config.js. The
+ * "ProseMirror", "taskList", and "is-editor-empty" class names below are
+ * injected into the DOM at runtime by Tiptap/ProseMirror itself -- they never
+ * appear as literal text in our .tsx source -- so under `@layer components`
+ * this entire block was silently dropped from `npm run build` output
+ * (verified: `grep ProseMirror dist/assets/*.css` matched nothing). Writing
+ * it as plain CSS (still using `@apply`) makes Tailwind emit it unconditionally.
+ */
+.ProseMirror {
+  @apply font-doc text-[11pt] leading-[1.75] text-ink;
+}
+
+.ProseMirror > * + * {
+  @apply mt-3;
+}
+
+.ProseMirror h1 {
+  @apply mt-6 font-sans text-[20pt] font-medium leading-tight;
+}
+.ProseMirror h2 {
+  @apply mt-5 font-sans text-[16pt] font-medium leading-tight;
+}
+.ProseMirror h3 {
+  @apply mt-4 font-sans text-[13pt] font-medium leading-tight;
+}
+
+.ProseMirror ul {
+  @apply list-disc pl-6;
+}
+.ProseMirror ol {
+  @apply list-decimal pl-6;
+}
+.ProseMirror li > ul,
+.ProseMirror li > ol {
+  @apply mt-1;
+}
+
+.ProseMirror blockquote {
+  @apply border-l-4 border-line-strong pl-4 text-ink-muted;
+}
+
+.ProseMirror hr {
+  @apply my-6 border-line;
+}
+
+.ProseMirror a {
+  @apply text-accent underline;
+}
+
+.ProseMirror code {
+  @apply rounded bg-surface-hover px-1 py-0.5 font-mono text-[0.9em];
+}
+
+/* Checklists render as real checkboxes rather than bullets. */
+.ProseMirror ul[data-type='taskList'] {
+  @apply list-none pl-0;
+}
+.ProseMirror ul[data-type='taskList'] li {
+  @apply flex items-start gap-2;
+}
+.ProseMirror ul[data-type='taskList'] li > label {
+  @apply mt-1 shrink-0;
+}
+
+/* Placeholder text on an empty first line. */
+.ProseMirror p.is-editor-empty:first-child::before {
+  @apply pointer-events-none float-left h-0 text-ink-faint;
+  content: attr(data-placeholder);
+}
