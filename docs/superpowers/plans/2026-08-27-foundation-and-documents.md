@@ -2946,71 +2946,86 @@ export function DocumentEditor({
 
 - [ ] **Step 5: Add editor typography to `src/index.css`**
 
-Append below the existing `@layer base` block:
+Append below the existing `@layer base` block.
+
+**Do NOT wrap this in `@layer components`.** Tailwind v3's JIT purge treats every
+class name referenced inside a `@layer` block as a content candidate and strips
+the rule unless that literal string appears in a file matched by `content` in
+`tailwind.config.js`. `ProseMirror`, `taskList`, and `is-editor-empty` are
+injected into the DOM at runtime by Tiptap — they never appear in our `.tsx`
+source — so under `@layer components` this entire block is silently dropped from
+the production build. The failure is invisible: the build succeeds, tests pass,
+and the editor ships completely unstyled. Written as plain CSS (still using
+`@apply`), Tailwind emits it unconditionally.
+
+Verify after building: `grep -c ProseMirror dist/assets/*.css` must be non-zero.
 
 ```css
-@layer components {
-  .ProseMirror {
-    @apply font-doc text-[11pt] leading-[1.75] text-ink;
-  }
+/*
+ * Editor typography for Tiptap/ProseMirror content.
+ * Deliberately NOT inside `@layer components` — see note above; the JIT purge
+ * silently drops runtime-injected class names from layered blocks.
+ */
+.ProseMirror {
+  @apply font-doc text-[11pt] leading-[1.75] text-ink;
+}
 
-  .ProseMirror > * + * {
-    @apply mt-3;
-  }
+.ProseMirror > * + * {
+  @apply mt-3;
+}
 
-  .ProseMirror h1 {
-    @apply mt-6 font-sans text-[20pt] font-medium leading-tight;
-  }
-  .ProseMirror h2 {
-    @apply mt-5 font-sans text-[16pt] font-medium leading-tight;
-  }
-  .ProseMirror h3 {
-    @apply mt-4 font-sans text-[13pt] font-medium leading-tight;
-  }
+.ProseMirror h1 {
+  @apply mt-6 font-sans text-[20pt] font-medium leading-tight;
+}
+.ProseMirror h2 {
+  @apply mt-5 font-sans text-[16pt] font-medium leading-tight;
+}
+.ProseMirror h3 {
+  @apply mt-4 font-sans text-[13pt] font-medium leading-tight;
+}
 
-  .ProseMirror ul {
-    @apply list-disc pl-6;
-  }
-  .ProseMirror ol {
-    @apply list-decimal pl-6;
-  }
-  .ProseMirror li > ul,
-  .ProseMirror li > ol {
-    @apply mt-1;
-  }
+.ProseMirror ul {
+  @apply list-disc pl-6;
+}
+.ProseMirror ol {
+  @apply list-decimal pl-6;
+}
+.ProseMirror li > ul,
+.ProseMirror li > ol {
+  @apply mt-1;
+}
 
-  .ProseMirror blockquote {
-    @apply border-l-4 border-line-strong pl-4 text-ink-muted;
-  }
+.ProseMirror blockquote {
+  @apply border-l-4 border-line-strong pl-4 text-ink-muted;
+}
 
-  .ProseMirror hr {
-    @apply my-6 border-line;
-  }
+.ProseMirror hr {
+  @apply my-6 border-line;
+}
 
-  .ProseMirror a {
-    @apply text-accent underline;
-  }
+.ProseMirror a {
+  @apply text-accent underline;
+}
 
-  .ProseMirror code {
-    @apply rounded bg-surface-hover px-1 py-0.5 font-mono text-[0.9em];
-  }
+.ProseMirror code {
+  @apply rounded bg-surface-hover px-1 py-0.5 font-mono text-[0.9em];
+}
 
-  /* Checklists render as real checkboxes rather than bullets. */
-  .ProseMirror ul[data-type='taskList'] {
-    @apply list-none pl-0;
-  }
-  .ProseMirror ul[data-type='taskList'] li {
-    @apply flex items-start gap-2;
-  }
-  .ProseMirror ul[data-type='taskList'] li > label {
-    @apply mt-1 shrink-0;
-  }
+/* Checklists render as real checkboxes rather than bullets. */
+.ProseMirror ul[data-type='taskList'] {
+  @apply list-none pl-0;
+}
+.ProseMirror ul[data-type='taskList'] li {
+  @apply flex items-start gap-2;
+}
+.ProseMirror ul[data-type='taskList'] li > label {
+  @apply mt-1 shrink-0;
+}
 
-  /* Placeholder text on an empty first line. */
-  .ProseMirror p.is-editor-empty:first-child::before {
-    @apply pointer-events-none float-left h-0 text-ink-faint;
-    content: attr(data-placeholder);
-  }
+/* Placeholder text on an empty first line. */
+.ProseMirror p.is-editor-empty:first-child::before {
+  @apply pointer-events-none float-left h-0 text-ink-faint;
+  content: attr(data-placeholder);
 }
 ```
 
