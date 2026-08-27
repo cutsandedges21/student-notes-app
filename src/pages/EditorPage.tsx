@@ -35,6 +35,11 @@ export default function EditorPage() {
   // reads the current value rather than a captured stale one.
   const versionRef = useRef<number>(1)
 
+  // The latest editor content, so a title-only edit can still send the current
+  // body. Declared before `persist` because the stale-save branch has to reset
+  // it to the re-read remote content.
+  const contentRef = useRef<JSONContent | null>(null)
+
   const persist = useCallback(
     async ({ title: nextTitle, content }: DraftPayload) => {
       if (!documentId) return
@@ -48,10 +53,15 @@ export default function EditorPage() {
         })
 
         if (result.status === 'stale') {
-          // Another tab saved first. Re-read rather than clobbering it.
+          // Another tab saved first. Re-read and adopt its content rather than
+          // clobbering it. Resetting contentRef matters as much as setDoc: it
+          // is what a later title-only edit sends as the body, so leaving the
+          // local content here would re-save the very content we just backed
+          // out of, defeating the staleness check.
           const fresh = await fetchDocument(documentId)
           if (fresh) {
             versionRef.current = fresh.version
+            contentRef.current = fresh.content as JSONContent
             setDoc(fresh)
             setTitle(fresh.title)
           }
@@ -113,8 +123,6 @@ export default function EditorPage() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-
-  const contentRef = useRef<JSONContent | null>(null)
 
   function handleContentChange(content: JSONContent) {
     contentRef.current = content
@@ -196,6 +204,7 @@ export default function EditorPage() {
         <main className="flex min-w-0 flex-1 flex-col">
           <DocumentEditor
             documentId={doc.id}
+            version={doc.version}
             initialContent={doc.content as JSONContent}
             onChange={handleContentChange}
           />

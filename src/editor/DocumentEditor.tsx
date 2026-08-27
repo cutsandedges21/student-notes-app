@@ -8,12 +8,18 @@ interface DocumentEditorProps {
   initialContent: JSONContent
   /** Identity of the loaded document; changing it swaps the editor content. */
   documentId: string
+  /**
+   * Version of the loaded content. Advances when the page re-reads the
+   * document after a stale save, which is a content swap without an id change.
+   */
+  version: number
   onChange: (content: JSONContent) => void
 }
 
 export function DocumentEditor({
   initialContent,
   documentId,
+  version,
   onChange,
 }: DocumentEditorProps) {
   const editor = useEditor({
@@ -33,11 +39,18 @@ export function DocumentEditor({
   // Swap content when navigating between documents without remounting the
   // editor. `emitUpdate: false` suppresses an onUpdate, so loading never
   // marks the document dirty and never triggers a spurious save.
+  //
+  // `version` is in the deps as well as `documentId`: a stale save makes the
+  // page re-read the document and adopt newer remote content under the SAME
+  // id. Without re-syncing here the editor would keep showing the local text
+  // while the page's versionRef advanced, so the next keystroke would save
+  // that local text over the newer content with a valid version -- silently
+  // destroying the other writer's work.
   useEffect(() => {
     if (!editor) return
     editor.commands.setContent(initialContent, { emitUpdate: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId, editor])
+  }, [documentId, version, editor])
 
   return (
     <>
