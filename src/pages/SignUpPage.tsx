@@ -1,0 +1,86 @@
+import { useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { AuthLayout } from '../components/AuthLayout'
+import { Button } from '../components/ui/Button'
+import { Input } from '../components/ui/Input'
+import { useAuth } from '../contexts/AuthContext'
+
+export default function SignUpPage() {
+  const { signUp } = useAuth()
+  const navigate = useNavigate()
+  const [displayName, setDisplayName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    setError(null)
+
+    if (password.length < 8) {
+      setError('Use at least 8 characters for your password.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await signUp(email, password, displayName.trim())
+      navigate('/classes', { replace: true })
+    } catch (caught) {
+      console.error('[SignUpPage] sign-up failed:', caught)
+      setError('We could not create that account. Try a different email.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <AuthLayout
+      title="Create your account"
+      subtitle="Keep your class notes in one place."
+      footer={
+        <>
+          Already have an account?{' '}
+          <Link to="/login" className="text-accent hover:underline">
+            Sign in
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Input
+          label="Name"
+          autoComplete="name"
+          required
+          value={displayName}
+          onChange={(event) => setDisplayName(event.target.value)}
+        />
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+        <Input
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+        <Button type="submit" variant="primary" loading={submitting}>
+          Create account
+        </Button>
+      </form>
+    </AuthLayout>
+  )
+}
