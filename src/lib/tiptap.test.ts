@@ -70,4 +70,61 @@ describe('extractPlainText', () => {
     }
     expect(extractPlainText(doc)).toBe('Before\nAfter')
   })
+
+  it('separates consecutive list blocks', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'bulletList',
+          content: [
+            {
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Glycolysis' }] }],
+            },
+            {
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Krebs cycle' }] }],
+            },
+          ],
+        },
+        {
+          type: 'orderedList',
+          content: [
+            {
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Step one' }] }],
+            },
+            {
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Step two' }] }],
+            },
+          ],
+        },
+      ],
+    }
+    expect(extractPlainText(doc)).toBe('Glycolysis\nKrebs cycle\nStep one\nStep two')
+  })
+
+  // hardBreak (Shift+Enter) is inline for layout purposes -- it doesn't start
+  // a new block -- but it still represents a line break the user explicitly
+  // typed. Dropping it silently would mash the surrounding words together
+  // ("Line oneLine two"), the exact class of bug this file was fixed for
+  // above. So it contributes its own newline instead of nothing.
+  it('treats hardBreak as an inline line break, not a no-op', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Line one' },
+            { type: 'hardBreak' },
+            { type: 'text', text: 'Line two' },
+          ],
+        },
+      ],
+    }
+    expect(extractPlainText(doc)).toBe('Line one\nLine two')
+  })
 })

@@ -352,6 +352,50 @@ describe('extractPlainText', () => {
     }
     expect(extractPlainText(doc)).toBe('Before\nAfter')
   })
+
+  // Regression: list containers are not inline. When a document's children are
+  // all list containers, a block-type allowlist misses them and the whole doc
+  // takes the inline path, mashing the last item of one list into the first
+  // item of the next ("Krebs cycleStep one").
+  it('separates consecutive list blocks', () => {
+    const listItem = (text: string) => ({
+      type: 'listItem',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    })
+
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'bulletList', content: [listItem('Glycolysis'), listItem('Krebs cycle')] },
+        { type: 'orderedList', content: [listItem('Step one'), listItem('Step two')] },
+      ],
+    }
+
+    expect(extractPlainText(doc)).toBe('Glycolysis\nKrebs cycle\nStep one\nStep two')
+  })
+
+  // hardBreak (Shift+Enter) is inline for layout purposes -- it doesn't
+  // start a new block -- but it still represents a line break the user
+  // explicitly typed. Treating it as a no-op mashes the surrounding words
+  // together ("Line oneLine two"), the exact class of bug the list-block
+  // regression above was fixed for. So it contributes its own newline
+  // instead of nothing.
+  it('treats hardBreak as an inline line break, not a no-op', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Line one' },
+            { type: 'hardBreak' },
+            { type: 'text', text: 'Line two' },
+          ],
+        },
+      ],
+    }
+    expect(extractPlainText(doc)).toBe('Line one\nLine two')
+  })
 })
 ```
 
@@ -371,18 +415,16 @@ Create `src/lib/tiptap.ts`:
 import type { JSONContent } from '@tiptap/react'
 
 /**
- * Node types that occupy their own line. When a node's children are blocks,
- * their text is joined with newlines; otherwise (inline runs) it is
- * concatenated directly.
+ * The only node types that flow inline within a block. Everything else is
+ * block-level and occupies its own line.
+ *
+ * Inverted deliberately: enumerating inline types is stable (there are two),
+ * while enumerating block types is not — every new Tiptap extension would
+ * need adding here, and forgetting one silently concatenates adjacent blocks
+ * with no separator. A document of two consecutive lists is the case that
+ * exposes it.
  */
-const BLOCK_TYPES = new Set([
-  'paragraph',
-  'heading',
-  'listItem',
-  'taskItem',
-  'blockquote',
-  'codeBlock',
-])
+const INLINE_TYPES = new Set(['text', 'hardBreak'])
 
 /**
  * Flattens a Tiptap JSON document to plain text.
@@ -393,10 +435,17 @@ const BLOCK_TYPES = new Set([
 export function extractPlainText(node: JSONContent): string {
   if (node.type === 'text') return node.text ?? ''
 
+  // hardBreak (Shift+Enter) is inline for layout purposes -- it doesn't
+  // start a new block -- but it still represents a line break the user
+  // explicitly typed. Treating it as a no-op would mash the surrounding
+  // words together (e.g. "Line oneLine two"), so it contributes its own
+  // newline instead.
+  if (node.type === 'hardBreak') return '\n'
+
   const children = node.content ?? []
   const parts = children.map(extractPlainText)
 
-  const hasBlockChildren = children.some((child) => BLOCK_TYPES.has(child.type ?? ''))
+  const hasBlockChildren = children.some((child) => !INLINE_TYPES.has(child.type ?? ''))
 
   return hasBlockChildren ? parts.filter((part) => part !== '').join('\n') : parts.join('')
 }
@@ -408,7 +457,7 @@ export function extractPlainText(node: JSONContent): string {
 npm test
 ```
 
-Expected: PASS — 5 tests in `src/lib/tiptap.test.ts`.
+Expected: PASS — 7 tests in `src/lib/tiptap.test.ts`.
 
 - [ ] **Step 9: Commit**
 
@@ -1054,7 +1103,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
 npm test
 ```
 
-Expected: PASS — 9 tests total (5 tiptap + 4 Button).
+Expected: PASS — 11 tests total (7 tiptap + 4 Button).
 
 - [ ] **Step 8: Commit**
 
@@ -3270,7 +3319,7 @@ Check each of these:
 npm test && npx tsc -b --noEmit
 ```
 
-Expected: PASS — 16 tests (5 tiptap, 4 Button, 2 documents, 5 autosave), no type errors.
+Expected: PASS — 18 tests (7 tiptap, 4 Button, 2 documents, 5 autosave), no type errors.
 
 - [ ] **Step 7: Commit**
 
@@ -3755,7 +3804,7 @@ Expected: `0` — the `on delete cascade` removed them.
 npm test && npx tsc -b --noEmit && npm run build
 ```
 
-Expected: PASS — 20 tests (5 tiptap, 4 Button, 2 documents, 5 autosave, 4 MenuButton), no type errors, build succeeds.
+Expected: PASS — 22 tests (7 tiptap, 4 Button, 2 documents, 5 autosave, 4 MenuButton), no type errors, build succeeds.
 
 - [ ] **Step 9: Commit**
 
