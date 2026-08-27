@@ -2132,7 +2132,16 @@ The save path is the one piece of data logic with a real correctness requirement
 Create `src/services/documents.test.ts`:
 
 ```ts
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// documents.ts imports the shared `supabase` client at module scope, and that
+// client throws synchronously at import time when the VITE_SUPABASE_* env vars
+// are absent. This mock keeps that side effect out of the way so
+// interpretSaveResult — a pure function with no Supabase dependency of its
+// own — can be imported and tested in isolation. src/lib/supabase.ts is
+// untouched, so the env check still protects the real app.
+vi.mock('../lib/supabase', () => ({ supabase: {} }))
+
 import { interpretSaveResult } from './documents'
 
 describe('interpretSaveResult', () => {
