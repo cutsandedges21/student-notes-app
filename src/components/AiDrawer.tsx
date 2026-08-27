@@ -1,0 +1,43 @@
+import type { ReactNode } from 'react'
+import { AI_SIDEBAR_SIDE } from '../constants/layout'
+import { cn } from '../lib/cn'
+
+interface AiDrawerProps {
+  open: boolean
+  onClose: () => void
+  children: ReactNode
+}
+
+export function AiDrawer({ open, onClose, children }: AiDrawerProps) {
+  return (
+    <div
+      className={cn(
+        'fixed inset-0 z-40 lg:hidden',
+        open ? 'pointer-events-auto' : 'pointer-events-none',
+      )}
+      aria-hidden={!open}
+    >
+      <button
+        type="button"
+        tabIndex={open ? 0 : -1}
+        aria-label="Close AI assistant"
+        onClick={onClose}
+        className={cn(
+          'absolute inset-0 bg-ink/20 transition-opacity',
+          open ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+      <aside
+        aria-label="AI assistant"
+        className={cn(
+          'absolute inset-y-0 flex w-[min(360px,85vw)] flex-col bg-surface shadow-sheet transition-transform',
+          AI_SIDEBAR_SIDE === 'left'
+            ? ['left-0 border-r border-line', open ? 'translate-x-0' : '-translate-x-full']
+            : ['right-0 border-l border-line', open ? 'translate-x-0' : 'translate-x-full'],
+        )}
+      >
+        {children}
+      </aside>
+    </div>
+  )
+}

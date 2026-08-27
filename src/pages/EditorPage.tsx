@@ -4,6 +4,7 @@ import type { JSONContent } from '@tiptap/react'
 import { DocumentEditor } from '../editor/DocumentEditor'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { Button } from '../components/ui/Button'
+import { AiDrawer } from '../components/AiDrawer'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { createAutosaveScheduler } from '../lib/autosave'
 import { fetchClass } from '../services/classes'
@@ -200,6 +201,12 @@ export default function EditorPage() {
           />
         </main>
       </div>
+
+      <AiDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
+        <div className="p-4 text-sm text-ink-muted">
+          AI assistant arrives in the next stage.
+        </div>
+      </AiDrawer>
     </div>
   )
 }

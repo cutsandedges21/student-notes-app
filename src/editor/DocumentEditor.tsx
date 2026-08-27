@@ -42,8 +42,8 @@ export function DocumentEditor({
   return (
     <>
       <FormattingToolbar editor={editor} />
-      <div className="flex-1 overflow-y-auto bg-surface-backdrop px-4 py-8">
-        <div className="mx-auto min-h-[1056px] max-w-sheet bg-surface px-12 py-14 shadow-sheet sm:px-16">
+      <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 py-0 sm:px-4 sm:py-8">
+        <div className="mx-auto min-h-full max-w-sheet bg-surface px-6 py-8 sm:min-h-[1056px] sm:px-12 sm:py-14 sm:shadow-sheet lg:px-16">
           <EditorContent editor={editor} />
         </div>
       </div>
