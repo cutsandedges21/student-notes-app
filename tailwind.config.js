@@ -29,7 +29,7 @@ export default {
           '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto',
           '"Helvetica Neue"', 'Arial', 'sans-serif',
         ],
-        doc: ['Georgia', 'Cambria', '"Times New Roman"', 'serif'],
+        doc: ['Arial', 'Helvetica', 'sans-serif'],
       },
       boxShadow: {
         sheet: '0 1px 3px rgba(60,64,67,0.15), 0 4px 8px rgba(60,64,67,0.08)',

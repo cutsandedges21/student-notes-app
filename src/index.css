@@ -45,6 +45,7 @@
  * it as plain CSS (still using `@apply`) makes Tailwind emit it unconditionally.
  */
 .ProseMirror {
+  /* Document default: Arial 11pt, matching the toolbar's initial readout. */
   @apply font-doc text-[11pt] leading-[1.75] text-ink;
 }
 

@@ -9,6 +9,7 @@ import {
 import { cn } from '../lib/cn'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
 import { ColorPicker } from './ColorPicker'
+import { FONT_GROUPS, findFontLabel } from './fonts'
 
 interface FormattingToolbarProps {
   editor: Editor | null
@@ -115,16 +116,6 @@ function Divider() {
   return <div className="mx-1 h-5 w-px shrink-0 bg-line" />
 }
 
-const FONTS = [
-  'Arial',
-  'Georgia',
-  'Times New Roman',
-  'Courier New',
-  'Verdana',
-  'Trebuchet MS',
-  'Comic Sans MS',
-]
-
 const TEXT_STYLES = [
   { label: 'Normal text', level: 0 },
   { label: 'Heading 1', level: 1 },
@@ -150,7 +141,8 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
 
   const activeLevel =
     ([1, 2, 3] as const).find((level) => editor.isActive('heading', { level })) ?? 0
-  const currentFont = editor.getAttributes('textStyle').fontFamily ?? 'Georgia'
+  const currentFontStack = editor.getAttributes('textStyle').fontFamily as string | undefined
+  const currentFontLabel = findFontLabel(currentFontStack)
   const currentSize = parseInt(editor.getAttributes('textStyle').fontSize ?? '11', 10) || 11
   const currentColor = editor.getAttributes('textStyle').color
   const currentHighlight = editor.getAttributes('highlight').color
@@ -234,22 +226,39 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
 
       <Divider />
 
-      <ToolbarDropdown label="Font" width={128} trigger={currentFont}>
-        {(close) =>
-          FONTS.map((font) => (
-            <DropdownItem
-              key={font}
-              active={currentFont === font}
-              style={{ fontFamily: font }}
-              onSelect={() => {
-                editor.chain().focus().setFontFamily(font).run()
-                close()
-              }}
-            >
-              {font}
-            </DropdownItem>
-          ))
+      <ToolbarDropdown
+        label="Font"
+        width={150}
+        trigger={
+          <span style={{ fontFamily: currentFontStack }}>{currentFontLabel}</span>
         }
+      >
+        {(close) => (
+          <div className="max-h-80 w-56 overflow-y-auto">
+            {FONT_GROUPS.map((group) => (
+              <div key={group.label}>
+                <div className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-ink-faint">
+                  {group.label}
+                </div>
+                {group.fonts.map((font) => (
+                  <DropdownItem
+                    key={font.label}
+                    active={currentFontLabel === font.label}
+                    // Each name renders in its own typeface, so the menu shows
+                    // what the font looks like rather than just naming it.
+                    style={{ fontFamily: font.stack, fontSize: '15px' }}
+                    onSelect={() => {
+                      editor.chain().focus().setFontFamily(font.stack).run()
+                      close()
+                    }}
+                  >
+                    {font.label}
+                  </DropdownItem>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </ToolbarDropdown>
 
       <Divider />

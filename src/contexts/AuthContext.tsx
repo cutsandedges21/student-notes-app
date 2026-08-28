@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import type { ProfileRow } from '../types/database'
 import { migrateGuestData } from '../services/migrateGuestData'
 
@@ -36,7 +36,19 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null)
 
+/**
+ * Accounts require Supabase. Without it the app still runs (guest mode), so
+ * fail loudly at the point of use rather than crashing the whole app at boot.
+ */
+function assertConfigured(): void {
+  if (!isSupabaseConfigured) {
+    throw new Error('Accounts are unavailable: this deployment has no Supabase credentials.')
+  }
+}
+
 async function fetchProfile(userId: string): Promise<ProfileRow | null> {
+  if (!isSupabaseConfigured) return null
+
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -59,6 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
+    // No backend configured: stay signed out permanently and let guest mode
+    // carry the app. Touching supabase.auth here would dereference null.
+    if (!isSupabaseConfigured) {
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
 
     void supabase.auth.getSession().then(({ data }) => {
@@ -116,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dismissMigration: () => setMigration(null),
 
       signUp: async (email, password, displayName) => {
+        assertConfigured()
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -133,16 +153,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       signIn: async (email, password) => {
+        assertConfigured()
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       },
 
       signOut: async () => {
+        assertConfigured()
         const { error } = await supabase.auth.signOut()
         if (error) throw error
       },
 
       requestPasswordReset: async (email) => {
+        assertConfigured()
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/reset-password`,
         })
@@ -150,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
 
       updatePassword: async (password) => {
+        assertConfigured()
         const { error } = await supabase.auth.updateUser({ password })
         if (error) throw error
       },
