@@ -1,4 +1,4 @@
-import type { Editor } from '@tiptap/react'
+import { useEditorState, type Editor } from '@tiptap/react'
 import { useCallback, useEffect, useRef, type KeyboardEvent } from 'react'
 import {
   Bold, Italic, Underline, Strikethrough, List, ListOrdered, ListChecks,
@@ -137,15 +137,59 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
 
-  if (!editor) return null
+  /**
+   * Every readout and active state the toolbar shows, derived in one
+   * subscription.
+   *
+   * Tiptap 3's `useEditor` deliberately does NOT re-render React on each
+   * transaction. Reading `editor.isActive(...)` straight out of render there-
+   * fore produces stale values: the toolbar only refreshed when something else
+   * happened to re-render the page, so moving the caret left the font, size and
+   * colour readouts showing whatever they said last. `useEditorState`
+   * subscribes properly and re-renders only when this selection result changes.
+   */
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: instance }) => {
+      if (!instance) return null
 
-  const activeLevel =
-    ([1, 2, 3] as const).find((level) => editor.isActive('heading', { level })) ?? 0
-  const currentFontStack = editor.getAttributes('textStyle').fontFamily as string | undefined
+      const textStyle = instance.getAttributes('textStyle')
+      return {
+        canUndo: instance.can().undo(),
+        canRedo: instance.can().redo(),
+        headingLevel:
+          ([1, 2, 3] as const).find((level) =>
+            instance.isActive('heading', { level }),
+          ) ?? 0,
+        fontStack: textStyle.fontFamily as string | undefined,
+        fontSize: parseInt(textStyle.fontSize ?? '11', 10) || 11,
+        color: textStyle.color as string | undefined,
+        highlight: instance.getAttributes('highlight').color as string | undefined,
+        isBold: instance.isActive('bold'),
+        isItalic: instance.isActive('italic'),
+        isUnderline: instance.isActive('underline'),
+        isStrike: instance.isActive('strike'),
+        isLink: instance.isActive('link'),
+        isBulletList: instance.isActive('bulletList'),
+        isOrderedList: instance.isActive('orderedList'),
+        isTaskList: instance.isActive('taskList'),
+        isBlockquote: instance.isActive('blockquote'),
+        alignLeft: instance.isActive({ textAlign: 'left' }),
+        alignCenter: instance.isActive({ textAlign: 'center' }),
+        alignRight: instance.isActive({ textAlign: 'right' }),
+        alignJustify: instance.isActive({ textAlign: 'justify' }),
+      }
+    },
+  })
+
+  if (!editor || !state) return null
+
+  const activeLevel = state.headingLevel
+  const currentFontStack = state.fontStack
   const currentFontLabel = findFontLabel(currentFontStack)
-  const currentSize = parseInt(editor.getAttributes('textStyle').fontSize ?? '11', 10) || 11
-  const currentColor = editor.getAttributes('textStyle').color
-  const currentHighlight = editor.getAttributes('highlight').color
+  const currentSize = state.fontSize
+  const currentColor = state.color
+  const currentHighlight = state.highlight
 
   const setFontSize = (size: number) => {
     const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size))
@@ -180,13 +224,13 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
       <ToolButton
         label="Undo"
         icon={Undo2}
-        disabled={!editor.can().undo()}
+        disabled={!state.canUndo}
         onClick={() => editor.chain().focus().undo().run()}
       />
       <ToolButton
         label="Redo"
         icon={Redo2}
-        disabled={!editor.can().redo()}
+        disabled={!state.canRedo}
         onClick={() => editor.chain().focus().redo().run()}
       />
       <ToolButton label="Print" icon={Printer} onClick={() => window.print()} />
@@ -286,25 +330,25 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
       <ToolButton
         label="Bold"
         icon={Bold}
-        active={editor.isActive('bold')}
+        active={state.isBold}
         onClick={() => editor.chain().focus().toggleBold().run()}
       />
       <ToolButton
         label="Italic"
         icon={Italic}
-        active={editor.isActive('italic')}
+        active={state.isItalic}
         onClick={() => editor.chain().focus().toggleItalic().run()}
       />
       <ToolButton
         label="Underline"
         icon={Underline}
-        active={editor.isActive('underline')}
+        active={state.isUnderline}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
       />
       <ToolButton
         label="Strikethrough"
         icon={Strikethrough}
-        active={editor.isActive('strike')}
+        active={state.isStrike}
         onClick={() => editor.chain().focus().toggleStrike().run()}
       />
 
@@ -347,7 +391,7 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
       <ToolButton
         label="Insert link"
         icon={Link2}
-        active={editor.isActive('link')}
+        active={state.isLink}
         onClick={promptForLink}
       />
       <ToolButton label="Insert image" icon={ImageIcon} onClick={promptForImage} />
@@ -357,25 +401,25 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
       <ToolButton
         label="Align left"
         icon={AlignLeft}
-        active={editor.isActive({ textAlign: 'left' })}
+        active={state.alignLeft}
         onClick={() => editor.chain().focus().setTextAlign('left').run()}
       />
       <ToolButton
         label="Align centre"
         icon={AlignCenter}
-        active={editor.isActive({ textAlign: 'center' })}
+        active={state.alignCenter}
         onClick={() => editor.chain().focus().setTextAlign('center').run()}
       />
       <ToolButton
         label="Align right"
         icon={AlignRight}
-        active={editor.isActive({ textAlign: 'right' })}
+        active={state.alignRight}
         onClick={() => editor.chain().focus().setTextAlign('right').run()}
       />
       <ToolButton
         label="Justify"
         icon={AlignJustify}
-        active={editor.isActive({ textAlign: 'justify' })}
+        active={state.alignJustify}
         onClick={() => editor.chain().focus().setTextAlign('justify').run()}
       />
 
@@ -400,19 +444,19 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
       <ToolButton
         label="Bulleted list"
         icon={List}
-        active={editor.isActive('bulletList')}
+        active={state.isBulletList}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
       />
       <ToolButton
         label="Numbered list"
         icon={ListOrdered}
-        active={editor.isActive('orderedList')}
+        active={state.isOrderedList}
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
       />
       <ToolButton
         label="Checklist"
         icon={ListChecks}
-        active={editor.isActive('taskList')}
+        active={state.isTaskList}
         onClick={() => editor.chain().focus().toggleTaskList().run()}
       />
 
@@ -421,7 +465,7 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
       <ToolButton
         label="Quote"
         icon={Quote}
-        active={editor.isActive('blockquote')}
+        active={state.isBlockquote}
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
       />
       <ToolButton
