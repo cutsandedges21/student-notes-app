@@ -3,6 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
 import { DocumentEditor } from '../editor/DocumentEditor'
 import { DocumentMenubar } from '../editor/DocumentMenubar'
+import { SelectionToolbar } from '../editor/SelectionToolbar'
+import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
+import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
+import { snapshotDocument } from '../services/documents'
+import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { Button } from '../components/ui/Button'
@@ -40,6 +45,13 @@ export default function EditorPage() {
   // Ctrl/Cmd+Shift+A and the AI button both open it.
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
+  const [selection, setSelection] = useState<
+    (AiSelection & { coords: { top: number; left: number } }) | null
+  >(null)
+  const [pendingMode, setPendingMode] = useState<{
+    mode: AiMode
+    selection: AiSelection
+  } | null>(null)
   const navigate = useNavigate()
 
   // The version the client last read. Every save is conditional on it, and it
@@ -172,6 +184,49 @@ export default function EditorPage() {
     input?.select()
   }
 
+  /**
+   * Writes an accepted AI suggestion into the document.
+   *
+   * Snapshots the prior content first so an AI edit is always reversible, then
+   * chooses the narrowest edit that fits: a single-line suggestion replaces
+   * exactly the selected range and leaves surrounding formatting untouched,
+   * while anything with block structure is converted to nodes. Replacing the
+   * whole document is the last resort, used only when there was no selection.
+   */
+  async function handleApplySuggestion(content: string, target: AiSelection | null) {
+    if (!editor || !doc) return
+
+    if (userId) {
+      // Best-effort history; failing to snapshot must not block the edit.
+      try {
+        await snapshotDocument(userId, doc.id, editor.getJSON(), 'ai')
+      } catch (caught) {
+        console.error('[EditorPage] failed to snapshot before AI edit:', caught)
+      }
+    }
+
+    const range = target ?? selection
+
+    if (range) {
+      if (isInlineSuggestion(content)) {
+        editor.chain().focus().insertContentAt({ from: range.from, to: range.to }, content).run()
+      } else {
+        editor
+          .chain()
+          .focus()
+          .insertContentAt({ from: range.from, to: range.to }, markdownToHtml(content))
+          .run()
+      }
+    } else {
+      editor.chain().focus().setContent(markdownToHtml(content)).run()
+    }
+
+    setSelection(null)
+    // insertContentAt fires onUpdate, so autosave is already scheduled; flushing
+    // makes the accepted change durable immediately rather than a second later.
+    await scheduler.flush()
+  }
+
   if (!doc) return null
 
   const displayState: SaveState = online ? saveState : 'offline'
@@ -247,9 +302,15 @@ export default function EditorPage() {
               AI_SIDEBAR_SIDE === 'left' ? 'border-r border-line' : 'border-l border-line',
             )}
           >
-            <div className="p-4 text-sm text-ink-muted">
-              AI assistant arrives in the next stage.
-            </div>
+            <AiSidebar
+              documentId={doc.id}
+              classId={classId!}
+              selection={selection}
+              pendingMode={pendingMode}
+              onPendingHandled={() => setPendingMode(null)}
+              onApply={(content, target) => void handleApplySuggestion(content, target)}
+              onClose={() => setSidebarOpen(false)}
+            />
           </aside>
         )}
 
@@ -260,15 +321,31 @@ export default function EditorPage() {
             initialContent={doc.content as JSONContent}
             onChange={handleContentChange}
             onReady={setEditor}
+            onSelectionChange={setSelection}
           />
         </main>
       </div>
 
       <AiDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
-        <div className="p-4 text-sm text-ink-muted">
-          AI assistant arrives in the next stage.
-        </div>
+        <AiSidebar
+          documentId={doc.id}
+          classId={classId!}
+          selection={selection}
+          pendingMode={pendingMode}
+          onPendingHandled={() => setPendingMode(null)}
+          onApply={(content, target) => void handleApplySuggestion(content, target)}
+          onClose={() => setSidebarOpen(false)}
+        />
       </AiDrawer>
+
+      <SelectionToolbar
+        position={selection?.coords ?? null}
+        onAction={(mode) => {
+          if (!selection) return
+          setSidebarOpen(true)
+          setPendingMode({ mode, selection })
+        }}
+      />
     </div>
   )
 }

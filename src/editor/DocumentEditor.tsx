@@ -1,4 +1,5 @@
 import { EditorContent, useEditor, type Editor, type JSONContent } from '@tiptap/react'
+import type { AiSelection } from '../ai/AiSidebar'
 import { useEffect, useState } from 'react'
 import { editorExtensions } from './extensions'
 import { FormattingToolbar } from './FormattingToolbar'
@@ -19,6 +20,13 @@ interface DocumentEditorProps {
   onChange: (content: JSONContent) => void
   /** Receives the editor instance so the page can drive the menubar. */
   onReady?: (editor: Editor | null) => void
+  /**
+   * Reports the current text selection, with viewport coordinates for the
+   * floating AI toolbar. Null whenever the selection is empty.
+   */
+  onSelectionChange?: (
+    selection: (AiSelection & { coords: { top: number; left: number } }) | null,
+  ) => void
 }
 
 export function DocumentEditor({
@@ -27,6 +35,7 @@ export function DocumentEditor({
   version,
   onChange,
   onReady,
+  onSelectionChange,
 }: DocumentEditorProps) {
   const [margins, setMargins] = useState({ left: DEFAULT_MARGIN, right: DEFAULT_MARGIN })
 
@@ -41,6 +50,36 @@ export function DocumentEditor({
     },
     onUpdate: ({ editor: instance }) => {
       onChange(instance.getJSON())
+    },
+    onSelectionUpdate: ({ editor: instance }) => {
+      if (!onSelectionChange) return
+
+      const { from, to, empty } = instance.state.selection
+      if (empty) {
+        onSelectionChange(null)
+        return
+      }
+
+      const text = instance.state.doc.textBetween(from, to, ' ').trim()
+      if (!text) {
+        onSelectionChange(null)
+        return
+      }
+
+      // Coordinates come from ProseMirror rather than window.getSelection so
+      // they stay correct inside the scrolled document container.
+      const start = instance.view.coordsAtPos(from)
+      const end = instance.view.coordsAtPos(to)
+
+      onSelectionChange({
+        text,
+        from,
+        to,
+        coords: {
+          top: Math.min(start.top, end.top) - 8,
+          left: (start.left + end.left) / 2,
+        },
+      })
     },
   })
 
