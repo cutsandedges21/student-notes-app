@@ -18,6 +18,16 @@
   :focus-visible {
     @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface;
   }
+
+  /* ...but never around the writing surface itself. The caret is already the
+     focus indicator for editable text -- ringing the whole page is what Docs
+     and Word deliberately avoid, and it boxes in every line you type.
+     `outline-none` in editorProps can't do this on its own, because the rule
+     above draws a ring (a box-shadow), not an outline. */
+  [contenteditable]:focus,
+  [contenteditable]:focus-visible {
+    @apply outline-none ring-0 ring-offset-0;
+  }
 }
 
 /*
