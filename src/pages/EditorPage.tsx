@@ -5,6 +5,7 @@ import { DocumentEditor } from '../editor/DocumentEditor'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { Button } from '../components/ui/Button'
 import { AiDrawer } from '../components/AiDrawer'
+import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { createAutosaveScheduler } from '../lib/autosave'
 import { fetchClass } from '../services/classes'
@@ -22,7 +23,11 @@ interface DraftPayload {
 
 export default function EditorPage() {
   const { classId, documentId } = useParams<{ classId: string; documentId: string }>()
+  const { user } = useAuth()
   const online = useOnlineStatus()
+
+  // null while signed out -- services then read and write browser storage.
+  const userId = user?.id ?? null
 
   const [klass, setKlass] = useState<ClassRow | null>(null)
   const [doc, setDoc] = useState<DocumentRow | null>(null)
@@ -45,7 +50,7 @@ export default function EditorPage() {
       if (!documentId) return
       setSaveState('saving')
       try {
-        const result = await saveDocument({
+        const result = await saveDocument(userId, {
           documentId,
           title: nextTitle,
           content,
@@ -58,7 +63,7 @@ export default function EditorPage() {
           // is what a later title-only edit sends as the body, so leaving the
           // local content here would re-save the very content we just backed
           // out of, defeating the staleness check.
-          const fresh = await fetchDocument(documentId)
+          const fresh = await fetchDocument(userId, documentId)
           if (fresh) {
             versionRef.current = fresh.version
             contentRef.current = fresh.content as JSONContent
@@ -76,7 +81,7 @@ export default function EditorPage() {
         setSaveState('error')
       }
     },
-    [documentId],
+    [documentId, userId],
   )
 
   const scheduler = useMemo(
@@ -91,8 +96,8 @@ export default function EditorPage() {
     void (async () => {
       try {
         const [classRow, docRow] = await Promise.all([
-          fetchClass(classId),
-          fetchDocument(documentId),
+          fetchClass(userId, classId),
+          fetchDocument(userId, documentId),
         ])
         if (cancelled) return
         setKlass(classRow)
@@ -107,7 +112,7 @@ export default function EditorPage() {
     return () => {
       cancelled = true
     }
-  }, [classId, documentId])
+  }, [classId, documentId, userId])
 
   // Save anything pending when leaving the page.
   useEffect(() => () => void scheduler.flush(), [scheduler])
@@ -150,7 +155,7 @@ export default function EditorPage() {
         >
           ←
         </Link>
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
           {klass && (
             <span className="hidden shrink-0 text-sm text-ink-muted sm:inline">
               {klass.name} ›

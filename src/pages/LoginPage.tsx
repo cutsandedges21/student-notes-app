@@ -4,6 +4,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useAuth } from '../contexts/AuthContext'
+import { describeAuthError } from '../lib/authErrors'
 
 export default function LoginPage() {
   const { signIn } = useAuth()
@@ -22,7 +23,7 @@ export default function LoginPage() {
       navigate('/classes', { replace: true })
     } catch (caught) {
       console.error('[LoginPage] sign-in failed:', caught)
-      setError('That email and password combination did not work.')
+      setError(describeAuthError(caught))
     } finally {
       setSubmitting(false)
     }

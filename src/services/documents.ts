@@ -2,12 +2,17 @@ import { supabase } from '../lib/supabase'
 import { extractPlainText } from '../lib/tiptap'
 import type { JSONContent } from '@tiptap/react'
 import type { DocumentListItem, DocumentRow } from '../types/database'
+import {
+  guestCreateDocument,
+  guestDeleteDocument,
+  guestFetchDocument,
+  guestFetchDocuments,
+  guestSaveDocument,
+} from './guestStore'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
 
-export type SaveResult =
-  | { status: 'saved'; version: number }
-  | { status: 'stale' }
+export type SaveResult = { status: 'saved'; version: number } | { status: 'stale' }
 
 /**
  * Translates the row returned by a conditional update into a save outcome.
@@ -24,7 +29,14 @@ export function interpretSaveResult(
   return { status: 'saved', version: row.version }
 }
 
-export async function fetchDocuments(classId: string): Promise<DocumentListItem[]> {
+/** See the note in classes.ts on why `userId` is threaded through explicitly. */
+
+export async function fetchDocuments(
+  userId: string | null,
+  classId: string,
+): Promise<DocumentListItem[]> {
+  if (!userId) return guestFetchDocuments(classId)
+
   const { data, error } = await supabase
     .from('documents')
     .select('id, class_id, title, created_at, updated_at')
@@ -35,7 +47,12 @@ export async function fetchDocuments(classId: string): Promise<DocumentListItem[
   return (data ?? []) as DocumentListItem[]
 }
 
-export async function fetchDocument(documentId: string): Promise<DocumentRow | null> {
+export async function fetchDocument(
+  userId: string | null,
+  documentId: string,
+): Promise<DocumentRow | null> {
+  if (!userId) return guestFetchDocument(documentId)
+
   const { data, error } = await supabase
     .from('documents')
     .select('*')
@@ -47,10 +64,12 @@ export async function fetchDocument(documentId: string): Promise<DocumentRow | n
 }
 
 export async function createDocument(
-  userId: string,
+  userId: string | null,
   classId: string,
   title = '',
 ): Promise<DocumentRow> {
+  if (!userId) return guestCreateDocument(classId, title)
+
   const { data, error } = await supabase
     .from('documents')
     .insert({
@@ -74,12 +93,17 @@ export async function createDocument(
  * applies if the stored version still matches, which makes concurrent saves
  * from two tabs safe: the loser gets `{ status: 'stale' }` and re-reads.
  */
-export async function saveDocument(params: {
-  documentId: string
-  title: string
-  content: JSONContent
-  expectedVersion: number
-}): Promise<SaveResult> {
+export async function saveDocument(
+  userId: string | null,
+  params: {
+    documentId: string
+    title: string
+    content: JSONContent
+    expectedVersion: number
+  },
+): Promise<SaveResult> {
+  if (!userId) return guestSaveDocument(params)
+
   const { documentId, title, content, expectedVersion } = params
 
   const { data, error } = await supabase
@@ -99,12 +123,23 @@ export async function saveDocument(params: {
   return interpretSaveResult(data as { id: string; version: number } | null)
 }
 
-export async function deleteDocument(documentId: string): Promise<void> {
+export async function deleteDocument(
+  userId: string | null,
+  documentId: string,
+): Promise<void> {
+  if (!userId) {
+    guestDeleteDocument(documentId)
+    return
+  }
+
   const { error } = await supabase.from('documents').delete().eq('id', documentId)
   if (error) throw error
 }
 
-/** Snapshot the current content before an AI edit, so the change is reversible. */
+/**
+ * Snapshot the current content before an AI edit, so the change is reversible.
+ * Signed-in only: guest history is out of scope for local storage.
+ */
 export async function snapshotDocument(
   userId: string,
   documentId: string,

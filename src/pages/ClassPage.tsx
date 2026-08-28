@@ -22,12 +22,14 @@ export default function ClassPage() {
   const [professor, setProfessor] = useState('')
   const [renameOpen, setRenameOpen] = useState(false)
 
+  const userId = user?.id ?? null
+
   const load = useCallback(async () => {
     if (!classId) return
     try {
       const [classRow, docs] = await Promise.all([
-        fetchClass(classId),
-        fetchDocuments(classId),
+        fetchClass(userId, classId),
+        fetchDocuments(userId, classId),
       ])
       setKlass(classRow)
       setProfessor(classRow?.professor ?? '')
@@ -37,22 +39,22 @@ export default function ClassPage() {
     } finally {
       setLoading(false)
     }
-  }, [classId])
+  }, [classId, userId])
 
   useEffect(() => {
     void load()
   }, [load])
 
   async function handleNewNote() {
-    if (!user || !classId) return
-    const doc = await createDocument(user.id, classId)
+    if (!classId) return
+    const doc = await createDocument(userId, classId)
     navigate(`/classes/${classId}/documents/${doc.id}`)
   }
 
   async function handleProfessorBlur() {
     if (!classId || !klass || professor === klass.professor) return
     try {
-      await updateClass(classId, { professor: professor.trim() })
+      await updateClass(userId, classId, { professor: professor.trim() })
       setKlass({ ...klass, professor: professor.trim() })
     } catch (caught) {
       console.error('[ClassPage] failed to update professor:', caught)
@@ -62,7 +64,7 @@ export default function ClassPage() {
 
   async function handleRename(name: string) {
     if (!classId || !klass) return
-    await updateClass(classId, { name })
+    await updateClass(userId, classId, { name })
     setKlass({ ...klass, name })
   }
 
@@ -74,7 +76,7 @@ export default function ClassPage() {
     if (!confirmed) return
 
     try {
-      await deleteClass(classId)
+      await deleteClass(userId, classId)
       navigate('/classes', { replace: true })
     } catch (caught) {
       console.error('[ClassPage] failed to delete class:', caught)
@@ -88,7 +90,7 @@ export default function ClassPage() {
     if (!confirmed) return
 
     try {
-      await deleteDocument(documentId)
+      await deleteDocument(userId, documentId)
       await load()
     } catch (caught) {
       console.error('[ClassPage] failed to delete note:', caught)

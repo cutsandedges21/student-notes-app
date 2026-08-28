@@ -4,6 +4,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useAuth } from '../contexts/AuthContext'
+import { describeAuthError } from '../lib/authErrors'
 
 export default function ResetPasswordPage() {
   const { updatePassword } = useAuth()
@@ -27,7 +28,7 @@ export default function ResetPasswordPage() {
       navigate('/classes', { replace: true })
     } catch (caught) {
       console.error('[ResetPasswordPage] password update failed:', caught)
-      setError('That reset link has expired. Request a new one.')
+      setError(describeAuthError(caught))
     } finally {
       setSubmitting(false)
     }

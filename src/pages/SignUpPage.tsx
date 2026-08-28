@@ -4,6 +4,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useAuth } from '../contexts/AuthContext'
+import { describeAuthError } from '../lib/authErrors'
 
 export default function SignUpPage() {
   const { signUp } = useAuth()
@@ -29,7 +30,7 @@ export default function SignUpPage() {
       navigate('/classes', { replace: true })
     } catch (caught) {
       console.error('[SignUpPage] sign-up failed:', caught)
-      setError('We could not create that account. Try a different email.')
+      setError(describeAuthError(caught))
     } finally {
       setSubmitting(false)
     }
@@ -38,7 +39,7 @@ export default function SignUpPage() {
   return (
     <AuthLayout
       title="Create your account"
-      subtitle="Keep your class notes in one place."
+      subtitle="Your class notes, in one place."
       footer={
         <>
           Already have an account?{' '}

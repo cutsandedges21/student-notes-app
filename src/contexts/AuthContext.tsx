@@ -9,12 +9,16 @@ import {
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { ProfileRow } from '../types/database'
+import { migrateGuestData } from '../services/migrateGuestData'
 
 type AuthState = {
   session: Session | null
   user: User | null
   profile: ProfileRow | null
   loading: boolean
+  /** Set once after guest work is copied into the account. */
+  migration: { classes: number; documents: number } | null
+  dismissMigration: () => void
   signUp: (email: string, password: string, displayName: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -42,6 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<ProfileRow | null>(null)
   const [loading, setLoading] = useState(true)
+  const [migration, setMigration] = useState<{ classes: number; documents: number } | null>(
+    null,
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -52,9 +59,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession)
       setLoading(false)
+
+      // Anything created while signed out lives in browser storage. On the way
+      // in, copy it into the account. migrateGuestData is a no-op when there is
+      // nothing local, and keeps the local copy if any write fails, so a failed
+      // migration never costs the user their notes.
+      if (event === 'SIGNED_IN' && nextSession?.user) {
+        void migrateGuestData(nextSession.user.id).then((result) => {
+          if (result.migrated) {
+            setMigration({ classes: result.classes, documents: result.documents })
+          }
+        })
+      }
     })
 
     return () => {
@@ -85,6 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       profile,
       loading,
+      migration,
+      dismissMigration: () => setMigration(null),
 
       signUp: async (email, password, displayName) => {
         const { error } = await supabase.auth.signUp({
@@ -118,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw error
       },
     }),
-    [session, profile, loading],
+    [session, profile, loading, migration],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

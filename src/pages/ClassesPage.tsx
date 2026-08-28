@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AppHeader } from '../components/AppHeader'
 import { Button } from '../components/ui/Button'
 import { CreateClassDialog } from '../components/CreateClassDialog'
+import { StorageNotice } from '../components/StorageNotice'
 import { useAuth } from '../contexts/AuthContext'
 import { createClass, fetchClasses, type ClassInput } from '../services/classes'
 import { formatRelativeTime } from '../lib/formatDate'
@@ -14,24 +15,24 @@ export default function ClassesPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
 
+  const userId = user?.id ?? null
+
   const load = useCallback(async () => {
-    if (!user) return
     try {
-      setClasses(await fetchClasses(user.id))
+      setClasses(await fetchClasses(userId))
     } catch (caught) {
       console.error('[ClassesPage] failed to load classes:', caught)
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [userId])
 
   useEffect(() => {
     void load()
   }, [load])
 
   async function handleCreate(input: ClassInput) {
-    if (!user) return
-    await createClass(user.id, input)
+    await createClass(userId, input)
     await load()
   }
 
@@ -47,6 +48,8 @@ export default function ClassesPage() {
             </Button>
           )}
         </div>
+
+        <StorageNotice hasContent={classes.length > 0} />
 
         {loading ? null : classes.length === 0 ? (
           <div className="mt-24 text-center">

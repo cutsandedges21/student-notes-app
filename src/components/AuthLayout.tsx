@@ -13,7 +13,7 @@ export function AuthLayout({ title, subtitle, children, footer }: AuthLayoutProp
     <main className="grid min-h-full place-items-center px-4 py-12">
       <div className="w-full max-w-sm">
         <Link to="/" className="text-sm font-medium tracking-tight text-ink">
-          Student Notes
+          Margin
         </Link>
         <h1 className="mt-8 text-2xl font-medium text-ink">{title}</h1>
         {subtitle && <p className="mt-1.5 text-sm text-ink-muted">{subtitle}</p>}
