@@ -12,6 +12,7 @@ import {
   FontSize,
   LineHeight,
 } from '@tiptap/extension-text-style'
+import { Indent } from './indent'
 
 /**
  * The editor's extension set.
@@ -24,6 +25,9 @@ import {
  *
  * TextStyle is the base mark that Color, FontFamily, FontSize and LineHeight
  * all attach to -- without it those four silently do nothing.
+ *
+ * Indent is ours: it backs the toolbar's indent buttons everywhere the list
+ * commands don't apply.
  */
 export const editorExtensions = [
   StarterKit.configure({
@@ -39,6 +43,7 @@ export const editorExtensions = [
   FontFamily,
   FontSize,
   LineHeight,
+  Indent,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Image.configure({ inline: false, HTMLAttributes: { class: 'doc-image' } }),

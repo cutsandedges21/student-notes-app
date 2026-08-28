@@ -1,9 +1,11 @@
 import { EditorContent, useEditor, type Editor, type JSONContent } from '@tiptap/react'
 import type { AiSelection } from '../ai/AiSidebar'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { editorExtensions } from './extensions'
 import { FormattingToolbar } from './FormattingToolbar'
 import { Ruler } from './Ruler'
+import { AI_SIDEBAR_SIDE, AI_SIDEBAR_WIDTH_PX } from '../constants/layout'
+import { cn } from '../lib/cn'
 
 const DEFAULT_MARGIN = 96
 
@@ -27,6 +29,23 @@ interface DocumentEditorProps {
   onSelectionChange?: (
     selection: (AiSelection & { coords: { top: number; left: number } }) | null,
   ) => void
+  /** Driven by View > Show ruler. */
+  showRuler?: boolean
+  /**
+   * True while "Hide the menus" has collapsed the title and menu rows. The
+   * toolbar owns the chevron that toggles it, but the rows it hides live in
+   * EditorPage, so the state is passed through rather than held here.
+   */
+  compact?: boolean
+  onToggleCompact?: () => void
+  /**
+   * Permanent side panel, rendered beside the page itself.
+   *
+   * It lives inside this component rather than wrapping it so the toolbar and
+   * ruler keep the full window width -- a panel that started above them would
+   * shorten the toolbar and push the whole chrome around.
+   */
+  sidebar?: ReactNode
 }
 
 export function DocumentEditor({
@@ -36,8 +55,13 @@ export function DocumentEditor({
   onChange,
   onReady,
   onSelectionChange,
+  showRuler = true,
+  compact = false,
+  onToggleCompact,
+  sidebar,
 }: DocumentEditorProps) {
   const [margins, setMargins] = useState({ left: DEFAULT_MARGIN, right: DEFAULT_MARGIN })
+  const [zoom, setZoom] = useState(1)
 
   const editor = useEditor({
     extensions: editorExtensions,
@@ -105,18 +129,61 @@ export function DocumentEditor({
 
   return (
     <>
-      <FormattingToolbar editor={editor} />
-      <Ruler
-        leftMargin={margins.left}
-        rightMargin={margins.right}
-        onChange={setMargins}
+      <FormattingToolbar
+        editor={editor}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        compact={compact}
+        onToggleCompact={onToggleCompact}
       />
-      <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 py-0 sm:px-4 sm:py-8">
-        <div
-          style={{ paddingLeft: margins.left, paddingRight: margins.right }}
-          className="mx-auto min-h-full max-w-sheet bg-surface py-8 sm:min-h-[1056px] sm:py-14 sm:shadow-sheet"
-        >
-          <EditorContent editor={editor} />
+      <div
+        className={cn(
+          'flex min-h-0 flex-1',
+          AI_SIDEBAR_SIDE === 'right' && 'flex-row-reverse',
+        )}
+      >
+        {sidebar && (
+          <aside
+            style={{ width: AI_SIDEBAR_WIDTH_PX }}
+            aria-label="AI assistant"
+            className={cn(
+              'hidden shrink-0 flex-col bg-surface lg:flex',
+              AI_SIDEBAR_SIDE === 'left' ? 'border-r border-line' : 'border-l border-line',
+            )}
+          >
+            {sidebar}
+          </aside>
+        )}
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* The ruler lives INSIDE the scroll container, pinned to its top.
+              Anywhere else it centres on a different width than the page: the
+              scroll container reserves a scrollbar, which shifts the centred
+              sheet by half the scrollbar and left the two visibly out of
+              register. Sharing one centring context makes them agree exactly,
+              and sticky keeps the ruler visible while scrolling. */}
+          <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 pb-0 pt-0 sm:px-4 sm:pb-8">
+          {/* `zoom` rather than a transform: it scales the box itself, so the
+              page keeps flowing in the scroll container instead of overlapping
+              whatever follows it. */}
+            {showRuler && (
+              <div className="sticky top-0 z-10 -mx-4 mb-8 hidden bg-surface-backdrop px-4 lg:block">
+                <Ruler
+                  leftMargin={margins.left}
+                  rightMargin={margins.right}
+                  onChange={setMargins}
+                  zoom={zoom}
+                />
+              </div>
+            )}
+
+            <div
+              style={{ paddingLeft: margins.left, paddingRight: margins.right, zoom }}
+              className="mx-auto min-h-full max-w-sheet bg-surface py-8 sm:min-h-[1056px] sm:py-14 sm:shadow-sheet"
+            >
+              <EditorContent editor={editor} />
+            </div>
+          </div>
         </div>
       </div>
     </>

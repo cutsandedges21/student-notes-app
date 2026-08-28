@@ -30,6 +30,17 @@
   }
 }
 
+/* Rows that scroll sideways on narrow screens (the menu bar, the toolbar pill)
+   still need to be scrollable, but a visible bar inside chrome that is 24px
+   tall eats the row. Kept out of `@layer` for the reason given below. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /*
  * Editor typography for Tiptap/ProseMirror content.
  *

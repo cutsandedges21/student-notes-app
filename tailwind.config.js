@@ -43,6 +43,8 @@ export default {
           'chip-hover': '#b0ddff',
           'chip-text': '#001d35',
           active: '#d3e3fd',
+          /** Toggled-on formatting buttons: a clear grey "in use" state. */
+          pressed: '#c4c7c5',
           'active-icon': '#0b57d0',
           marker: '#0b57d0',
           /** Ruler margin regions -- the part outside the writable width. */
@@ -65,6 +67,8 @@ export default {
       boxShadow: {
         sheet: '0 1px 3px rgba(60,64,67,0.15), 0 4px 8px rgba(60,64,67,0.08)',
         pill: '0 2px 6px rgba(60,64,67,0.28)',
+        /* Google's elevation-2, used by every Docs menu and popover. */
+        menu: '0 1px 2px 0 rgba(60,64,67,0.3), 0 2px 6px 2px rgba(60,64,67,0.15)',
       },
       transitionDuration: {
         DEFAULT: '150ms',

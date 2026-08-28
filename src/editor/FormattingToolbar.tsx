@@ -1,18 +1,27 @@
 import { useEditorState, type Editor } from '@tiptap/react'
-import { useCallback, useEffect, useRef, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import {
-  Bold, Italic, Underline, Strikethrough, List, ListOrdered, ListChecks,
-  Quote, Minus, Undo2, Redo2, Link2, Image as ImageIcon, RemoveFormatting,
-  AlignLeft, AlignCenter, AlignRight, AlignJustify, Baseline, Highlighter,
-  Printer, Minus as MinusIcon, Plus,
+  Bold, Italic, Underline, List, ListOrdered, ListChecks,
+  Strikethrough, Link2, Image as ImageIcon, RemoveFormatting,
+  AlignLeft, AlignCenter, AlignRight, AlignJustify,
+  Printer, Minus, Plus, SpellCheck, PaintRoller,
+  MessageSquarePlus, ListIndentIncrease, ListIndentDecrease,
+  Pencil, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
 import { ColorPicker } from './ColorPicker'
 import { FONT_GROUPS, findFontLabel } from './fonts'
+import { HighlightColorIcon, LineSpacingIcon, TextColorIcon } from './DocsIcons'
 
 interface FormattingToolbarProps {
   editor: Editor | null
+  /** 1 = 100%. Owned by DocumentEditor, which scales the page with it. */
+  zoom?: number
+  onZoomChange?: (zoom: number) => void
+  /** True while the title and menu rows are hidden by the collapse chevron. */
+  compact?: boolean
+  onToggleCompact?: () => void
 }
 
 /**
@@ -86,34 +95,54 @@ function useRovingToolbar(containerRef: React.RefObject<HTMLDivElement | null>) 
 
 interface ToolButtonProps {
   label: string
-  icon: typeof Bold
+  icon?: typeof Bold
+  children?: React.ReactNode
   active?: boolean
   disabled?: boolean
-  onClick: () => void
+  /** Renders the disabled look without the disabled behaviour's dimming. */
+  unavailable?: boolean
+  className?: string
+  onClick?: () => void
 }
 
-function ToolButton({ label, icon: Icon, active, disabled, onClick }: ToolButtonProps) {
+function ToolButton({
+  label,
+  icon: Icon,
+  children,
+  active,
+  disabled,
+  unavailable,
+  className,
+  onClick,
+}: ToolButtonProps) {
   return (
     <button
       type="button"
       title={label}
       aria-label={label}
       aria-pressed={active}
+      aria-disabled={unavailable || undefined}
       disabled={disabled}
-      onClick={onClick}
+      onClick={unavailable ? undefined : onClick}
       className={cn(
-        'grid h-7 w-7 shrink-0 place-items-center rounded transition-colors',
+        'grid h-7 w-7 shrink-0 place-items-center rounded-full transition-colors',
         'disabled:cursor-not-allowed disabled:opacity-40',
-        active ? 'bg-accent-subtle text-accent' : 'text-ink-muted hover:bg-surface-hover',
+        unavailable && 'cursor-default',
+        // Grey rather than Docs' light blue: an explicitly requested, and
+        // frankly clearer, "this mark is currently applied" signal.
+        active
+          ? 'bg-docs-pressed text-docs-text'
+          : 'text-docs-icon hover:bg-docs-hover',
+        className,
       )}
     >
-      <Icon size={16} strokeWidth={2} />
+      {Icon ? <Icon size={17} strokeWidth={1.8} /> : children}
     </button>
   )
 }
 
 function Divider() {
-  return <div className="mx-1 h-5 w-px shrink-0 bg-line" />
+  return <div className="mx-1 h-5 w-px shrink-0 bg-docs-divider" />
 }
 
 const TEXT_STYLES = [
@@ -130,12 +159,49 @@ const LINE_HEIGHTS = [
   { label: 'Double', value: '2' },
 ]
 
+const ZOOM_LEVELS = [0.5, 0.75, 0.9, 1, 1.25, 1.5, 2]
+
 const MIN_FONT_SIZE = 8
 const MAX_FONT_SIZE = 96
 
-export function FormattingToolbar({ editor }: FormattingToolbarProps) {
+/** What the paint-format tool holds between its two clicks. */
+interface CopiedFormat {
+  fontFamily?: string
+  fontSize?: string
+  color?: string
+  highlight?: string
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strike: boolean
+}
+
+export function FormattingToolbar({
+  editor,
+  zoom = 1,
+  onZoomChange,
+  compact = false,
+  onToggleCompact,
+}: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
+
+  const [copiedFormat, setCopiedFormat] = useState<CopiedFormat | null>(null)
+  const [spellcheck, setSpellcheck] = useState(true)
+  const [editable, setEditable] = useState(true)
+
+  // The browser's own spell checker is what the A-with-a-tick button drives;
+  // the attribute lives on the contenteditable node, not in editor state.
+  useEffect(() => {
+    editor?.view.dom.setAttribute('spellcheck', String(spellcheck))
+  }, [editor, spellcheck])
+
+  // The second argument suppresses the update event. Left on, mounting the
+  // toolbar would emit one, autosave would fire, and every note would report
+  // "Saved" the instant it opened without anything having been edited.
+  useEffect(() => {
+    editor?.setEditable(editable, false)
+  }, [editor, editable])
 
   /**
    * Every readout and active state the toolbar shows, derived in one
@@ -162,7 +228,9 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
             instance.isActive('heading', { level }),
           ) ?? 0,
         fontStack: textStyle.fontFamily as string | undefined,
+        fontSizeRaw: textStyle.fontSize as string | undefined,
         fontSize: parseInt(textStyle.fontSize ?? '11', 10) || 11,
+        lineHeight: (textStyle.lineHeight as string | undefined) ?? '1.75',
         color: textStyle.color as string | undefined,
         highlight: instance.getAttributes('highlight').color as string | undefined,
         isBold: instance.isActive('bold'),
@@ -173,7 +241,8 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
         isBulletList: instance.isActive('bulletList'),
         isOrderedList: instance.isActive('orderedList'),
         isTaskList: instance.isActive('taskList'),
-        isBlockquote: instance.isActive('blockquote'),
+        inListItem: instance.isActive('listItem'),
+        inTaskItem: instance.isActive('taskItem'),
         alignLeft: instance.isActive({ textAlign: 'left' }),
         alignCenter: instance.isActive({ textAlign: 'center' }),
         alignRight: instance.isActive({ textAlign: 'right' }),
@@ -185,11 +254,8 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
   if (!editor || !state) return null
 
   const activeLevel = state.headingLevel
-  const currentFontStack = state.fontStack
-  const currentFontLabel = findFontLabel(currentFontStack)
+  const currentFontLabel = findFontLabel(state.fontStack)
   const currentSize = state.fontSize
-  const currentColor = state.color
-  const currentHighlight = state.highlight
 
   const setFontSize = (size: number) => {
     const clamped = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size))
@@ -213,271 +279,475 @@ export function FormattingToolbar({ editor }: FormattingToolbarProps) {
     editor.chain().focus().setImage({ src: url }).run()
   }
 
+  /**
+   * Paint format is a two-click tool: the first click copies the formatting
+   * under the caret, the second applies it to whatever is selected.
+   */
+  const paintFormat = () => {
+    if (copiedFormat) {
+      const chain = editor.chain().focus().unsetAllMarks()
+      if (copiedFormat.fontFamily) chain.setFontFamily(copiedFormat.fontFamily)
+      if (copiedFormat.fontSize) chain.setFontSize(copiedFormat.fontSize)
+      if (copiedFormat.color) chain.setColor(copiedFormat.color)
+      if (copiedFormat.highlight) chain.setHighlight({ color: copiedFormat.highlight })
+      if (copiedFormat.bold) chain.toggleBold()
+      if (copiedFormat.italic) chain.toggleItalic()
+      if (copiedFormat.underline) chain.toggleUnderline()
+      if (copiedFormat.strike) chain.toggleStrike()
+      chain.run()
+      setCopiedFormat(null)
+      return
+    }
+
+    setCopiedFormat({
+      fontFamily: state.fontStack,
+      fontSize: state.fontSizeRaw,
+      color: state.color,
+      highlight: state.highlight,
+      bold: state.isBold,
+      italic: state.isItalic,
+      underline: state.isUnderline,
+      strike: state.isStrike,
+    })
+  }
+
+  const indentBy = (direction: 1 | -1) => {
+    const chain = editor.chain().focus()
+    const itemType = state.inTaskItem ? 'taskItem' : state.inListItem ? 'listItem' : null
+
+    if (itemType) {
+      if (direction === 1) chain.sinkListItem(itemType)
+      else chain.liftListItem(itemType)
+    } else if (direction === 1) {
+      chain.indent()
+    } else {
+      chain.outdent()
+    }
+
+    chain.run()
+  }
+
+  const alignIcon = state.alignCenter
+    ? AlignCenter
+    : state.alignRight
+      ? AlignRight
+      : state.alignJustify
+        ? AlignJustify
+        : AlignLeft
+
+  /** Shared by the three list controls, so their chevrons switch list type. */
+  const listOptions = (close: () => void) => (
+    <>
+      <DropdownItem
+        active={state.isBulletList}
+        onSelect={() => {
+          editor.chain().focus().toggleBulletList().run()
+          close()
+        }}
+      >
+        Bulleted list
+      </DropdownItem>
+      <DropdownItem
+        active={state.isOrderedList}
+        onSelect={() => {
+          editor.chain().focus().toggleOrderedList().run()
+          close()
+        }}
+      >
+        Numbered list
+      </DropdownItem>
+      <DropdownItem
+        active={state.isTaskList}
+        onSelect={() => {
+          editor.chain().focus().toggleTaskList().run()
+          close()
+        }}
+      >
+        Checklist
+      </DropdownItem>
+    </>
+  )
+
   return (
     <div
       ref={containerRef}
       role="toolbar"
       aria-label="Text formatting"
       onKeyDown={handleKeyDown}
-      className="flex items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-3 py-1.5"
+      className="flex shrink-0 items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5"
     >
-      <ToolButton
-        label="Undo"
-        icon={Undo2}
-        disabled={!state.canUndo}
-        onClick={() => editor.chain().focus().undo().run()}
-      />
-      <ToolButton
-        label="Redo"
-        icon={Redo2}
-        disabled={!state.canRedo}
-        onClick={() => editor.chain().focus().redo().run()}
-      />
-      <ToolButton label="Print" icon={Printer} onClick={() => window.print()} />
+      <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-[18px] bg-docs-toolbar px-2 py-1">
+        <ToolButton label="Print" icon={Printer} onClick={() => window.print()} />
+        {/* No pressed state: spell check is on by default, and Docs leaves the
+            button plain rather than lighting up the whole row on load. */}
+        <ToolButton
+          label={spellcheck ? 'Turn off spell check' : 'Turn on spell check'}
+          icon={SpellCheck}
+          onClick={() => setSpellcheck((on) => !on)}
+        />
+        <ToolButton
+          label={copiedFormat ? 'Apply copied formatting' : 'Paint format'}
+          icon={PaintRoller}
+          active={Boolean(copiedFormat)}
+          onClick={paintFormat}
+        />
 
-      <Divider />
+        <ToolbarDropdown label="Zoom" width={66} trigger={`${Math.round(zoom * 100)}%`}>
+          {(close) =>
+            ZOOM_LEVELS.map((level) => (
+              <DropdownItem
+                key={level}
+                active={level === zoom}
+                onSelect={() => {
+                  onZoomChange?.(level)
+                  close()
+                }}
+              >
+                {Math.round(level * 100)}%
+              </DropdownItem>
+            ))
+          }
+        </ToolbarDropdown>
 
-      <ToolbarDropdown
-        label="Text style"
-        width={132}
-        trigger={TEXT_STYLES.find((style) => style.level === activeLevel)?.label}
-      >
-        {(close) =>
-          TEXT_STYLES.map((style) => (
-            <DropdownItem
-              key={style.level}
-              active={style.level === activeLevel}
-              onSelect={() => {
-                if (style.level === 0) editor.chain().focus().setParagraph().run()
-                else
-                  editor
-                    .chain()
-                    .focus()
-                    .toggleHeading({ level: style.level as 1 | 2 | 3 })
-                    .run()
-                close()
-              }}
-              style={{
-                fontSize: [0, 20, 16, 13][style.level] ? `${[11, 20, 16, 13][style.level]}pt` : undefined,
-                fontWeight: style.level === 0 ? undefined : 500,
-              }}
-            >
-              {style.label}
-            </DropdownItem>
-          ))
-        }
-      </ToolbarDropdown>
+        <Divider />
 
-      <Divider />
+        <ToolbarDropdown
+          label="Text style"
+          width={118}
+          trigger={TEXT_STYLES.find((style) => style.level === activeLevel)?.label}
+        >
+          {(close) =>
+            TEXT_STYLES.map((style) => (
+              <DropdownItem
+                key={style.level}
+                active={style.level === activeLevel}
+                onSelect={() => {
+                  if (style.level === 0) editor.chain().focus().setParagraph().run()
+                  else
+                    editor
+                      .chain()
+                      .focus()
+                      .toggleHeading({ level: style.level as 1 | 2 | 3 })
+                      .run()
+                  close()
+                }}
+                style={{
+                  fontSize: `${[11, 20, 16, 13][style.level]}pt`,
+                  fontWeight: style.level === 0 ? undefined : 500,
+                }}
+              >
+                {style.label}
+              </DropdownItem>
+            ))
+          }
+        </ToolbarDropdown>
 
-      <ToolbarDropdown
-        label="Font"
-        width={150}
-        trigger={
-          <span style={{ fontFamily: currentFontStack }}>{currentFontLabel}</span>
-        }
-      >
-        {(close) => (
-          <div className="max-h-80 w-56 overflow-y-auto">
-            {FONT_GROUPS.map((group) => (
-              <div key={group.label}>
-                <div className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-ink-faint">
-                  {group.label}
+        <Divider />
+
+        <ToolbarDropdown
+          label="Font"
+          width={86}
+          trigger={
+            <span style={{ fontFamily: state.fontStack }}>{currentFontLabel}</span>
+          }
+        >
+          {(close) => (
+            <div className="max-h-80 w-56 overflow-y-auto">
+              {FONT_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <div className="px-4 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-ink-faint">
+                    {group.label}
+                  </div>
+                  {group.fonts.map((font) => (
+                    <DropdownItem
+                      key={font.label}
+                      active={currentFontLabel === font.label}
+                      // Each name renders in its own typeface, so the menu shows
+                      // what the font looks like rather than just naming it.
+                      style={{ fontFamily: font.stack, fontSize: '15px' }}
+                      onSelect={() => {
+                        editor.chain().focus().setFontFamily(font.stack).run()
+                        close()
+                      }}
+                    >
+                      {font.label}
+                    </DropdownItem>
+                  ))}
                 </div>
-                {group.fonts.map((font) => (
-                  <DropdownItem
-                    key={font.label}
-                    active={currentFontLabel === font.label}
-                    // Each name renders in its own typeface, so the menu shows
-                    // what the font looks like rather than just naming it.
-                    style={{ fontFamily: font.stack, fontSize: '15px' }}
-                    onSelect={() => {
-                      editor.chain().focus().setFontFamily(font.stack).run()
-                      close()
-                    }}
-                  >
-                    {font.label}
-                  </DropdownItem>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-      </ToolbarDropdown>
+              ))}
+            </div>
+          )}
+        </ToolbarDropdown>
 
-      <Divider />
+        <Divider />
 
-      <ToolButton
-        label="Decrease font size"
-        icon={MinusIcon}
-        onClick={() => setFontSize(currentSize - 1)}
-      />
-      <span
-        aria-live="polite"
-        aria-label={`Font size ${currentSize}`}
-        className="grid h-7 w-8 shrink-0 place-items-center rounded border border-line-strong text-sm text-ink"
-      >
-        {currentSize}
-      </span>
-      <ToolButton
-        label="Increase font size"
-        icon={Plus}
-        onClick={() => setFontSize(currentSize + 1)}
-      />
+        <ToolButton
+          label="Decrease font size"
+          icon={Minus}
+          onClick={() => setFontSize(currentSize - 1)}
+        />
+        <span
+          aria-live="polite"
+          aria-label={`Font size ${currentSize}`}
+          className="grid h-6 w-9 shrink-0 place-items-center rounded border border-docs-outline bg-surface font-ui text-sm text-docs-text"
+        >
+          {currentSize}
+        </span>
+        <ToolButton
+          label="Increase font size"
+          icon={Plus}
+          onClick={() => setFontSize(currentSize + 1)}
+        />
 
-      <Divider />
+        <Divider />
 
-      <ToolButton
-        label="Bold"
-        icon={Bold}
-        active={state.isBold}
-        onClick={() => editor.chain().focus().toggleBold().run()}
-      />
-      <ToolButton
-        label="Italic"
-        icon={Italic}
-        active={state.isItalic}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      />
-      <ToolButton
-        label="Underline"
-        icon={Underline}
-        active={state.isUnderline}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-      />
-      <ToolButton
-        label="Strikethrough"
-        icon={Strikethrough}
-        active={state.isStrike}
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-      />
+        <ToolButton
+          label="Bold"
+          icon={Bold}
+          active={state.isBold}
+          onClick={() => editor.chain().focus().toggleBold().run()}
+        />
+        <ToolButton
+          label="Italic"
+          icon={Italic}
+          active={state.isItalic}
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+        />
+        <ToolButton
+          label="Underline"
+          icon={Underline}
+          active={state.isUnderline}
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+        />
+        <ToolButton
+          label="Strikethrough"
+          icon={Strikethrough}
+          active={state.isStrike}
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+        />
 
-      <ToolbarDropdown label="Text colour" trigger={<Baseline size={16} />}>
-        {(close) => (
-          <ColorPicker
-            value={currentColor}
-            clearLabel="Reset to default"
-            onSelect={(color) => {
-              editor.chain().focus().setColor(color).run()
-              close()
-            }}
-            onClear={() => {
-              editor.chain().focus().unsetColor().run()
-              close()
-            }}
-          />
-        )}
-      </ToolbarDropdown>
-
-      <ToolbarDropdown label="Highlight colour" trigger={<Highlighter size={16} />}>
-        {(close) => (
-          <ColorPicker
-            value={currentHighlight}
-            clearLabel="Remove highlight"
-            onSelect={(color) => {
-              editor.chain().focus().setHighlight({ color }).run()
-              close()
-            }}
-            onClear={() => {
-              editor.chain().focus().unsetHighlight().run()
-              close()
-            }}
-          />
-        )}
-      </ToolbarDropdown>
-
-      <Divider />
-
-      <ToolButton
-        label="Insert link"
-        icon={Link2}
-        active={state.isLink}
-        onClick={promptForLink}
-      />
-      <ToolButton label="Insert image" icon={ImageIcon} onClick={promptForImage} />
-
-      <Divider />
-
-      <ToolButton
-        label="Align left"
-        icon={AlignLeft}
-        active={state.alignLeft}
-        onClick={() => editor.chain().focus().setTextAlign('left').run()}
-      />
-      <ToolButton
-        label="Align centre"
-        icon={AlignCenter}
-        active={state.alignCenter}
-        onClick={() => editor.chain().focus().setTextAlign('center').run()}
-      />
-      <ToolButton
-        label="Align right"
-        icon={AlignRight}
-        active={state.alignRight}
-        onClick={() => editor.chain().focus().setTextAlign('right').run()}
-      />
-      <ToolButton
-        label="Justify"
-        icon={AlignJustify}
-        active={state.alignJustify}
-        onClick={() => editor.chain().focus().setTextAlign('justify').run()}
-      />
-
-      <ToolbarDropdown label="Line spacing" trigger="1.75">
-        {(close) =>
-          LINE_HEIGHTS.map((option) => (
-            <DropdownItem
-              key={option.value}
-              onSelect={() => {
-                editor.chain().focus().setLineHeight(option.value).run()
+        <ToolbarDropdown
+          label="Text colour"
+          trigger={<TextColorIcon color={state.color} />}
+        >
+          {(close) => (
+            <ColorPicker
+              value={state.color}
+              clearLabel="Reset to default"
+              onSelect={(color) => {
+                editor.chain().focus().setColor(color).run()
                 close()
               }}
-            >
-              {option.label}
-            </DropdownItem>
-          ))
-        }
+              onClear={() => {
+                editor.chain().focus().unsetColor().run()
+                close()
+              }}
+            />
+          )}
+        </ToolbarDropdown>
+
+        <ToolbarDropdown
+          label="Highlight colour"
+          trigger={<HighlightColorIcon color={state.highlight} />}
+        >
+          {(close) => (
+            <ColorPicker
+              value={state.highlight}
+              clearLabel="Remove highlight"
+              onSelect={(color) => {
+                editor.chain().focus().setHighlight({ color }).run()
+                close()
+              }}
+              onClear={() => {
+                editor.chain().focus().unsetHighlight().run()
+                close()
+              }}
+            />
+          )}
+        </ToolbarDropdown>
+
+        <Divider />
+
+        <ToolButton
+          label="Insert link"
+          icon={Link2}
+          active={state.isLink}
+          onClick={promptForLink}
+        />
+        {/* Docs greys this out until there is a selection; we have no comment
+            thread to attach, so it stays in the row looking exactly the same
+            and says so rather than pretending. */}
+        <ToolButton
+          label="Add comment (not available in Margin)"
+          icon={MessageSquarePlus}
+          unavailable
+        />
+        <ToolButton label="Insert image" icon={ImageIcon} onClick={promptForImage} />
+
+        <Divider />
+
+        <ToolbarDropdown label="Align" trigger={<AlignIcon icon={alignIcon} />}>
+          {(close) => (
+            <>
+              {(
+                [
+                  ['Left', 'left', AlignLeft, state.alignLeft],
+                  ['Centre', 'center', AlignCenter, state.alignCenter],
+                  ['Right', 'right', AlignRight, state.alignRight],
+                  ['Justified', 'justify', AlignJustify, state.alignJustify],
+                ] as const
+              ).map(([label, value, Icon, active]) => (
+                <DropdownItem
+                  key={value}
+                  active={active}
+                  onSelect={() => {
+                    editor.chain().focus().setTextAlign(value).run()
+                    close()
+                  }}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon size={16} /> {label}
+                  </span>
+                </DropdownItem>
+              ))}
+            </>
+          )}
+        </ToolbarDropdown>
+
+        <ToolbarDropdown label="Line spacing" trigger={<LineSpacingIcon size={17} />}>
+          {(close) =>
+            LINE_HEIGHTS.map((option) => (
+              <DropdownItem
+                key={option.value}
+                active={state.lineHeight === option.value}
+                onSelect={() => {
+                  editor.chain().focus().setLineHeight(option.value).run()
+                  close()
+                }}
+              >
+                {option.label}
+              </DropdownItem>
+            ))
+          }
+        </ToolbarDropdown>
+
+        <SplitControl
+          label="Checklist"
+          icon={ListChecks}
+          active={state.isTaskList}
+          onClick={() => editor.chain().focus().toggleTaskList().run()}
+          menu={listOptions}
+        />
+        <SplitControl
+          label="Bulleted list"
+          icon={List}
+          active={state.isBulletList}
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          menu={listOptions}
+        />
+        <SplitControl
+          label="Numbered list"
+          icon={ListOrdered}
+          active={state.isOrderedList}
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          menu={listOptions}
+        />
+
+        <ToolButton
+          label="Decrease indent"
+          icon={ListIndentDecrease}
+          onClick={() => indentBy(-1)}
+        />
+        <ToolButton
+          label="Increase indent"
+          icon={ListIndentIncrease}
+          onClick={() => indentBy(1)}
+        />
+        <ToolButton
+          label="Clear formatting"
+          icon={RemoveFormatting}
+          onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+        />
+      </div>
+
+      {/* Mode switch and collapse chevron sit outside the pill, on the white
+          chrome, exactly as they do in Docs. */}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <ToolbarDropdown
+          label="Mode"
+          width={102}
+          trigger={
+            <span className="flex items-center gap-2">
+              <Pencil size={16} className="text-docs-icon" />
+              {editable ? 'Editing' : 'Viewing'}
+            </span>
+          }
+        >
+          {(close) => (
+            <>
+              <DropdownItem
+                active={editable}
+                onSelect={() => {
+                  setEditable(true)
+                  close()
+                }}
+              >
+                Editing
+              </DropdownItem>
+              <DropdownItem
+                active={!editable}
+                onSelect={() => {
+                  setEditable(false)
+                  close()
+                }}
+              >
+                Viewing
+              </DropdownItem>
+            </>
+          )}
+        </ToolbarDropdown>
+
+        <ToolButton
+          label={compact ? 'Show the menus' : 'Hide the menus'}
+          icon={compact ? ChevronDown : ChevronUp}
+          onClick={onToggleCompact}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** Wrapper so an icon component can be passed through as a trigger. */
+function AlignIcon({ icon: Icon }: { icon: typeof AlignLeft }) {
+  return <Icon size={18} strokeWidth={1.8} />
+}
+
+interface SplitControlProps {
+  label: string
+  icon: typeof List
+  active: boolean
+  onClick: () => void
+  menu: (close: () => void) => React.ReactNode
+}
+
+/**
+ * The list controls in Docs are split buttons: the icon toggles, the chevron
+ * opens the options. Two real buttons sharing one hover group, rather than one
+ * button wearing a decorative chevron.
+ */
+function SplitControl({ label, icon, active, onClick, menu }: SplitControlProps) {
+  return (
+    <div className="flex shrink-0 items-center">
+      <ToolButton
+        label={label}
+        icon={icon}
+        active={active}
+        onClick={onClick}
+        className="w-[22px]"
+      />
+      <ToolbarDropdown label={`${label} options`} trigger={null} chevronOnly>
+        {menu}
       </ToolbarDropdown>
-
-      <Divider />
-
-      <ToolButton
-        label="Bulleted list"
-        icon={List}
-        active={state.isBulletList}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-      />
-      <ToolButton
-        label="Numbered list"
-        icon={ListOrdered}
-        active={state.isOrderedList}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-      />
-      <ToolButton
-        label="Checklist"
-        icon={ListChecks}
-        active={state.isTaskList}
-        onClick={() => editor.chain().focus().toggleTaskList().run()}
-      />
-
-      <Divider />
-
-      <ToolButton
-        label="Quote"
-        icon={Quote}
-        active={state.isBlockquote}
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-      />
-      <ToolButton
-        label="Divider"
-        icon={Minus}
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}
-      />
-      <ToolButton
-        label="Clear formatting"
-        icon={RemoveFormatting}
-        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-      />
     </div>
   )
 }

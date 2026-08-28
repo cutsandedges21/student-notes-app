@@ -10,6 +10,13 @@ interface ToolbarDropdownProps {
   trigger: ReactNode
   /** Fixed trigger width, so choosing a longer value doesn't shift the toolbar. */
   width?: number
+  /** Set when the control's value is applied to the selection. */
+  active?: boolean
+  /**
+   * Renders as a bare chevron. Used for the half of a split control that only
+   * opens the menu, where the icon lives in the button beside it.
+   */
+  chevronOnly?: boolean
   children: (close: () => void) => ReactNode
 }
 
@@ -31,6 +38,8 @@ export function ToolbarDropdown({
   label,
   trigger,
   width,
+  active,
+  chevronOnly,
   children,
 }: ToolbarDropdownProps) {
   const [open, setOpen] = useState(false)
@@ -101,13 +110,16 @@ export function ToolbarDropdown({
         onClick={() => setOpen((value) => !value)}
         style={width ? { width } : undefined}
         className={cn(
-          'flex h-7 shrink-0 items-center justify-between gap-1 rounded px-2 text-sm',
-          'text-ink transition-colors hover:bg-surface-hover',
-          open && 'bg-surface-hover',
+          'flex h-7 shrink-0 items-center rounded-full font-ui text-sm',
+          width ? 'justify-between gap-1 px-2' : 'justify-center',
+          !width && (chevronOnly ? 'w-[18px]' : 'gap-1 px-1'),
+          'transition-colors hover:bg-docs-hover',
+          active ? 'bg-docs-active text-docs-active-icon' : 'text-docs-text',
+          open && 'bg-docs-hover',
         )}
       >
-        <span className="truncate">{trigger}</span>
-        <ChevronDown size={14} className="shrink-0 text-ink-faint" />
+        <span className="flex min-w-0 items-center truncate">{trigger}</span>
+        <ChevronDown size={14} className="shrink-0 text-docs-icon" />
       </button>
 
       {open &&
@@ -120,7 +132,7 @@ export function ToolbarDropdown({
               // Hidden until measured, so it never flashes in the wrong place.
               visibility: position ? 'visible' : 'hidden',
             }}
-            className="fixed z-50 min-w-[180px] rounded border border-line bg-surface py-1 shadow-sheet"
+            className="fixed z-50 min-w-[180px] rounded-lg border border-line bg-surface py-2 shadow-menu"
           >
             {children(() => setOpen(false))}
           </div>,
@@ -144,8 +156,9 @@ export function DropdownItem({ active, onSelect, children, style }: DropdownItem
       onClick={onSelect}
       style={style}
       className={cn(
-        'block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-hover',
-        active ? 'bg-accent-subtle text-accent' : 'text-ink',
+        'block w-full px-4 py-1.5 text-left font-ui text-sm transition-colors',
+        'hover:bg-docs-chrome-hover',
+        active ? 'bg-docs-active text-docs-active-icon' : 'text-docs-text',
       )}
     >
       {children}

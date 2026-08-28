@@ -3,22 +3,20 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
 import { DocumentEditor } from '../editor/DocumentEditor'
 import { DocumentMenubar } from '../editor/DocumentMenubar'
+import { DocsTitleBar } from '../editor/DocsTitleBar'
 import { SelectionToolbar } from '../editor/SelectionToolbar'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
 import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
 import { snapshotDocument } from '../services/documents'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
-import { SaveStatus, type SaveState } from '../components/SaveStatus'
-import { Button } from '../components/ui/Button'
+import { type SaveState } from '../components/SaveStatus'
 import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { createAutosaveScheduler } from '../lib/autosave'
 import { fetchClass } from '../services/classes'
 import { createDocument, deleteDocument, fetchDocument, saveDocument } from '../services/documents'
-import { AI_SIDEBAR_SIDE, AI_SIDEBAR_WIDTH_PX } from '../constants/layout'
-import { cn } from '../lib/cn'
 import type { ClassRow, DocumentRow } from '../types/database'
 
 const AUTOSAVE_DELAY_MS = 1000
@@ -45,6 +43,7 @@ export default function EditorPage() {
   // Ctrl/Cmd+Shift+A and the AI button both open it.
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const [selection, setSelection] = useState<
     (AiSelection & { coords: { top: number; left: number } }) | null
   >(null)
@@ -52,6 +51,11 @@ export default function EditorPage() {
     mode: AiMode
     selection: AiSelection
   } | null>(null)
+  // View menu state. `compact` is Docs' "hide the menus": it folds away the
+  // title and menu rows and leaves the toolbar, which is why it is owned here
+  // rather than inside the toolbar that toggles it.
+  const [showRuler, setShowRuler] = useState(true)
+  const [compact, setCompact] = useState(false)
   const navigate = useNavigate()
 
   // The version the client last read. Every save is conditional on it, and it
@@ -121,10 +125,12 @@ export default function EditorPage() {
         if (cancelled) return
         setKlass(classRow)
         setDoc(docRow)
+        setLoaded(true)
         setTitle(docRow?.title ?? '')
         versionRef.current = docRow?.version ?? 1
       } catch (caught) {
         console.error('[EditorPage] failed to load document:', caught)
+        if (!cancelled) setLoaded(true)
       }
     })()
 
@@ -227,81 +233,81 @@ export default function EditorPage() {
     await scheduler.flush()
   }
 
+  /*
+   * A note can be missing for ordinary reasons -- deleted in another tab, a
+   * stale bookmark, or a link opened in a browser whose local notes live under
+   * a different origin. Rendering nothing left a blank white page with no way
+   * back, which reads as the app being broken.
+   */
+  if (loaded && !doc) {
+    return (
+      <div className="grid min-h-full place-items-center px-6">
+        <div className="text-center">
+          <h1 className="text-lg font-medium text-ink">This note isn&rsquo;t here</h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-ink-muted">
+            It may have been deleted, or it belongs to an account you&rsquo;re not
+            signed in to.
+          </p>
+          <Link
+            to={classId ? `/classes/${classId}` : '/classes'}
+            className="mt-6 inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            Back to my notes
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   if (!doc) return null
 
   const displayState: SaveState = online ? saveState : 'offline'
 
   return (
     <div className="flex h-full flex-col">
-      <header className="shrink-0 border-b border-line bg-surface px-4 pt-2">
-        <div className="flex items-center gap-3">
-          <Link
-            to={`/classes/${classId}`}
-            title="Back to class"
-            className="shrink-0 rounded px-1 text-lg text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
-          >
-            ←
-          </Link>
-
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex min-w-0 items-center gap-2">
-              <label htmlFor="doc-title" className="sr-only">
-                Note title
-              </label>
-              <input
-                id="doc-title"
-                value={title}
-                placeholder="Untitled note"
-                onChange={(event) => handleTitleChange(event.target.value)}
-                className="min-w-0 max-w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-lg text-ink placeholder:text-ink-faint hover:border-line-strong focus:border-line-strong"
-                size={Math.max(12, Math.min(48, title.length || 12))}
-              />
-              <SaveStatus state={displayState} />
-            </div>
-
-            <div className="-ml-0.5 flex items-center gap-2">
+      {!compact && (
+        <header className="shrink-0 bg-surface">
+          <DocsTitleBar
+            documentId={doc.id}
+            title={title}
+            onTitleChange={handleTitleChange}
+            saveState={displayState}
+            editor={editor}
+            backTo={`/classes/${classId}`}
+            backLabel={klass ? `Back to ${klass.name}` : 'Back to class'}
+            aiOpen={sidebarOpen}
+            onToggleAi={() => setSidebarOpen((open) => !open)}
+            menubar={
               <DocumentMenubar
                 editor={editor}
                 onNewNote={() => void handleNewNote()}
                 onRename={focusTitle}
                 onDelete={() => void handleDeleteNote()}
+                onOpenAi={() => setSidebarOpen(true)}
+                showRuler={showRuler}
+                onToggleRuler={() => setShowRuler((on) => !on)}
+                compact={compact}
+                onToggleCompact={() => setCompact((on) => !on)}
               />
-              {klass && (
-                <span className="hidden truncate text-xs text-ink-faint sm:inline">
-                  {klass.name}
-                </span>
-              )}
-            </div>
-          </div>
+            }
+          />
+        </header>
+      )}
 
-          <div className="ml-auto flex shrink-0 items-center gap-3 self-start pt-1">
-            <Button
-              size="sm"
-              title="Toggle AI assistant (Ctrl+Shift+A)"
-              aria-expanded={sidebarOpen}
-              onClick={() => setSidebarOpen((open) => !open)}
-            >
-              AI
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div
-        className={cn(
-          'flex min-h-0 flex-1',
-          AI_SIDEBAR_SIDE === 'right' && 'flex-row-reverse',
-        )}
-      >
-        {sidebarOpen && (
-          <aside
-            style={{ width: AI_SIDEBAR_WIDTH_PX }}
-            aria-label="AI assistant"
-            className={cn(
-              'hidden shrink-0 flex-col bg-surface lg:flex',
-              AI_SIDEBAR_SIDE === 'left' ? 'border-r border-line' : 'border-l border-line',
-            )}
-          >
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <DocumentEditor
+          documentId={doc.id}
+          version={doc.version}
+          initialContent={doc.content as JSONContent}
+          onChange={handleContentChange}
+          onReady={setEditor}
+          onSelectionChange={setSelection}
+          showRuler={showRuler}
+          compact={compact}
+          onToggleCompact={() => setCompact((on) => !on)}
+          // Permanently docked on desktop; the drawer below covers narrow
+          // screens, where a 360px column would leave no room to write.
+          sidebar={
             <AiSidebar
               documentId={doc.id}
               classId={classId!}
@@ -311,20 +317,9 @@ export default function EditorPage() {
               onApply={(content, target) => void handleApplySuggestion(content, target)}
               onClose={() => setSidebarOpen(false)}
             />
-          </aside>
-        )}
-
-        <main className="flex min-w-0 flex-1 flex-col">
-          <DocumentEditor
-            documentId={doc.id}
-            version={doc.version}
-            initialContent={doc.content as JSONContent}
-            onChange={handleContentChange}
-            onReady={setEditor}
-            onSelectionChange={setSelection}
-          />
-        </main>
-      </div>
+          }
+        />
+      </main>
 
       <AiDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
         <AiSidebar
