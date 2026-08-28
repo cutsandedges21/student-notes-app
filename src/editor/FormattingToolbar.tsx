@@ -415,7 +415,7 @@ export function FormattingToolbar({
       // The left padding matches the docked AI panel, so the centre column
       // lands on the document's centre rather than the window's. Applied from
       // lg up only, which is exactly where the panel is docked.
-      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 relative z-20 bg-surface px-3 pb-1.5 pt-0.5 shadow-pill [clip-path:inset(0_-100px_-100px_-100px)] lg:pl-[calc(var(--ai-panel-w)+0.75rem)]"
+      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 relative z-20 bg-surface px-3 pb-1.5 pt-0.5 shadow-[0_6px_6px_-6px_rgba(60,64,67,0.28)] lg:pl-[calc(var(--ai-panel-w)+0.75rem)]"
     >
       {/*
         Document-level actions live in their own pill on the left. The grid's
@@ -740,7 +740,7 @@ export function FormattingToolbar({
           chevron remains on the chrome here. */}
       <div className="flex shrink-0 items-center justify-end gap-1">
         <ToolButton
-          label={compact ? 'Show the menus' : 'Hide the menus'}
+          label={compact ? 'Expand' : 'Collapse'}
           icon={compact ? ChevronDown : ChevronUp}
           onClick={onToggleCompact}
         />
