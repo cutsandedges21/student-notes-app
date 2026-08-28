@@ -6,7 +6,7 @@ import { FormattingToolbar } from './FormattingToolbar'
 import { Ruler } from './Ruler'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
 import { Pencil } from 'lucide-react'
-import { AI_SIDEBAR_SIDE, AI_SIDEBAR_WIDTH_PX } from '../constants/layout'
+import { AI_SIDEBAR_SIDE } from '../constants/layout'
 import { cn } from '../lib/cn'
 
 const DEFAULT_MARGIN = 96
@@ -163,10 +163,9 @@ export function DocumentEditor({
       >
         {sidebar && editable && (
           <aside
-            style={{ width: AI_SIDEBAR_WIDTH_PX }}
             aria-label="AI assistant"
             className={cn(
-              'hidden shrink-0 flex-col bg-surface lg:flex',
+              'hidden w-[var(--ai-panel-w)] shrink-0 flex-col bg-surface lg:flex',
               AI_SIDEBAR_SIDE === 'left' ? 'border-r border-line' : 'border-l border-line',
             )}
           >
@@ -186,7 +185,7 @@ export function DocumentEditor({
               page keeps flowing in the scroll container instead of overlapping
               whatever follows it. */}
             {showRuler && editable && (
-              <div className="sticky top-0 z-10 -mx-4 mb-8 hidden bg-surface px-4 lg:block">
+              <div className="sticky top-0 z-10 -mx-4 mb-8 hidden bg-surface px-4 shadow-pill lg:block">
                 <Ruler
                   leftMargin={margins.left}
                   rightMargin={margins.right}

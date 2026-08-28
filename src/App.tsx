@@ -8,6 +8,7 @@ import ClassesPage from './pages/ClassesPage'
 import ClassPage from './pages/ClassPage'
 import EditorPage from './pages/EditorPage'
 import SharedDocumentPage from './pages/SharedDocumentPage'
+import UpgradePage from './pages/UpgradePage'
 
 /**
  * No route requires an account. Signed-out visitors get the full app backed by
@@ -28,6 +29,7 @@ export default function App() {
               visitor can then do is decided by the owner's chosen mode and
               whether they sign in. */}
           <Route path="/shared/:token" element={<SharedDocumentPage />} />
+          <Route path="/upgrade" element={<UpgradePage />} />
           <Route path="/classes" element={<ClassesPage />} />
           <Route path="/classes/:classId" element={<ClassPage />} />
           <Route

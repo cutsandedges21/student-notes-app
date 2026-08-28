@@ -129,7 +129,7 @@ export function Ruler({ leftMargin, rightMargin, onChange, zoom = 1 }: RulerProp
   }
 
   return (
-    <div className="hidden justify-center border-b border-line bg-surface py-1 lg:flex">
+    <div className="hidden justify-center bg-surface py-1 lg:flex">
       <div
         ref={trackRef}
         style={{ width }}

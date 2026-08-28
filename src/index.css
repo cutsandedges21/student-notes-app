@@ -3,6 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /*
+     * Width of the docked AI panel. The document's centring offsets are
+     * derived from this, so the two can never disagree -- change it here and
+     * the chrome follows.
+     */
+    --ai-panel-w: 312px;
+  }
+
   html,
   body,
   #root {

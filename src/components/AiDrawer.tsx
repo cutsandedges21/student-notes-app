@@ -30,7 +30,7 @@ export function AiDrawer({ open, onClose, children }: AiDrawerProps) {
       <aside
         aria-label="AI assistant"
         className={cn(
-          'absolute inset-y-0 flex w-[min(360px,85vw)] flex-col bg-surface shadow-sheet transition-transform',
+          'absolute inset-y-0 flex w-[min(var(--ai-panel-w),85vw)] flex-col bg-surface shadow-sheet transition-transform',
           AI_SIDEBAR_SIDE === 'left'
             ? ['left-0 border-r border-line', open ? 'translate-x-0' : '-translate-x-full']
             : ['right-0 border-l border-line', open ? 'translate-x-0' : 'translate-x-full'],

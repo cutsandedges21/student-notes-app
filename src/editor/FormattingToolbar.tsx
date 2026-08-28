@@ -415,7 +415,7 @@ export function FormattingToolbar({
       // The left padding matches the docked AI panel, so the centre column
       // lands on the document's centre rather than the window's. Applied from
       // lg up only, which is exactly where the panel is docked.
-      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5 lg:pl-[calc(360px+0.75rem)]"
+      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5 shadow-pill lg:pl-[calc(var(--ai-panel-w)+0.75rem)]"
     >
       {/*
         Document-level actions live in their own pill on the left. The grid's
@@ -425,7 +425,7 @@ export function FormattingToolbar({
       {/* Negative margin cancels the row's left padding for this cell only:
           the middle column stays centred on the document, while these
           document-level actions keep their place at the screen edge. */}
-      <div className="flex min-w-0 items-center justify-start lg:-ml-[calc(360px+0.75rem)] lg:pl-[18px]">
+      <div className="flex min-w-0 items-center justify-start lg:-ml-[calc(var(--ai-panel-w)+0.75rem)] lg:pl-[18px]">
         <div className="flex items-center gap-0.5 rounded-[18px] bg-docs-toolbar px-2 py-1">
           <ToolButton
             label="Undo"

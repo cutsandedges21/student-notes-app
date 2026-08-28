@@ -4,4 +4,9 @@
  */
 export const AI_SIDEBAR_SIDE: 'left' | 'right' = 'left'
 
-export const AI_SIDEBAR_WIDTH_PX = 360
+/**
+ * The panel's width lives in CSS as `--ai-panel-w` (src/index.css), because the
+ * document-centring offsets are derived from it in the same stylesheet. This
+ * mirror exists only for the mobile drawer, which sizes itself in JS.
+ */
+export const AI_SIDEBAR_WIDTH_PX = 312

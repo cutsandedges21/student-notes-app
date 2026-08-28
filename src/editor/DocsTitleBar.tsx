@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { AppDocIcon, SparkIcon } from './DocsIcons'
 import { ShareMenu } from './ShareMenu'
+import { deleteOwnAccount } from '../services/account'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { useAuth } from '../contexts/AuthContext'
 import { cn } from '../lib/cn'
@@ -76,11 +77,15 @@ export function DocsTitleBar({
   onToggleAi,
 }: DocsTitleBarProps) {
   const { profile, session, signOut } = useAuth()
+  const navigate = useNavigate()
   const signedIn = Boolean(session)
 
 
   const [starOverrides, setStarOverrides] = useState<Record<string, boolean>>({})
   const [accountOpen, setAccountOpen] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteInput, setDeleteInput] = useState('')
+  const [deleting, setDeleting] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
 
   // Starring is a local bookmark: there is no column for it on the document,
@@ -118,6 +123,20 @@ export function DocsTitleBar({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [accountOpen])
+
+  async function handleDeleteAccount() {
+    setDeleting(true)
+    try {
+      await deleteOwnAccount()
+      // The session is gone with the row; signing out clears it locally so the
+      // app doesn't keep rendering as though someone were still logged in.
+      await signOut().catch(() => undefined)
+      navigate('/classes', { replace: true })
+    } catch (caught) {
+      console.error('[DocsTitleBar] account deletion failed:', caught)
+      setDeleting(false)
+    }
+  }
 
   const displayName = profile?.display_name ?? session?.user.email ?? 'Guest'
   const initial = displayName.trim().charAt(0).toUpperCase() || 'G'
@@ -174,7 +193,7 @@ export function DocsTitleBar({
 
       </div>
 
-      <div className="ml-auto flex shrink-0 items-center gap-1 pt-1">
+      <div className="ml-auto flex shrink-0 items-center gap-3 pt-1">
         <ShareMenu documentId={documentId} />
 
         {/* The panel is permanently docked from `lg` up, so no trigger is
@@ -189,12 +208,8 @@ export function DocsTitleBar({
         </ChromeButton>
 
         <Link
-          to="/signup"
-          title={
-            signedIn
-              ? 'You already have an account'
-              : 'Create an account to sync these notes'
-          }
+          to="/upgrade"
+          title="See plans"
           className={cn(
             'hidden h-9 shrink-0 items-center rounded-full bg-docs-chip px-5 lg:flex',
             'font-ui text-sm font-medium text-docs-chip-text transition-colors hover:bg-docs-chip-hover',
@@ -227,8 +242,54 @@ export function DocsTitleBar({
                 {signedIn ? 'Signed in' : 'Saved on this device'}
               </p>
 
+              {/*
+                Deletion is irreversible and cascades to every note, so it asks
+                for the account name to be typed out. The confirmation replaces
+                the buttons in place rather than opening a second surface, which
+                keeps the menu the same size either way.
+              */}
+              {signedIn && confirmingDelete ? (
+                <div className="mt-3">
+                  <p className="text-xs text-ink-muted">
+                    This deletes your account and every note. Type{' '}
+                    <span className="font-medium text-docs-text">{displayName}</span> to
+                    confirm.
+                  </p>
+                  <label htmlFor="delete-confirm" className="sr-only">
+                    Type {displayName} to confirm
+                  </label>
+                  <input
+                    id="delete-confirm"
+                    value={deleteInput}
+                    autoFocus
+                    onChange={(event) => setDeleteInput(event.target.value)}
+                    className="mt-2 h-8 w-full rounded border border-line-strong px-2 font-ui text-sm text-docs-text"
+                  />
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmingDelete(false)
+                        setDeleteInput('')
+                      }}
+                      className="rounded-full border border-line px-3 py-1.5 font-ui text-sm text-docs-text transition-colors hover:bg-docs-chrome-hover"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleteInput !== displayName || deleting}
+                      onClick={() => void handleDeleteAccount()}
+                      className="rounded-full bg-red-600 px-3 py-1.5 font-ui text-sm text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {deleting ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="mt-3 flex gap-2">
                 {signedIn ? (
+                  <>
                   <button
                     type="button"
                     role="menuitem"
@@ -240,6 +301,15 @@ export function DocsTitleBar({
                   >
                     Sign out
                   </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => setConfirmingDelete(true)}
+                    className="rounded-full border border-red-600 px-4 py-1.5 font-ui text-sm text-red-600 transition-colors hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                  </>
                 ) : (
                   <>
                     <Link
@@ -259,6 +329,7 @@ export function DocsTitleBar({
                   </>
                 )}
               </div>
+              )}
             </div>
           )}
         </div>
@@ -273,7 +344,7 @@ export function DocsTitleBar({
       */}
       {/* Offset by the docked AI panel so the menus centre on the document,
           matching the toolbar below them. */}
-      <div className="flex min-w-0 items-center justify-center overflow-x-auto lg:pl-[360px]">
+      <div className="flex min-w-0 items-center justify-center overflow-x-auto lg:pl-[var(--ai-panel-w)]">
         {menubar}
       </div>
     </div>
