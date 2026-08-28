@@ -174,27 +174,25 @@ export function DocumentEditor({
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* The ruler lives INSIDE the scroll container, pinned to its top.
-              Anywhere else it centres on a different width than the page: the
-              scroll container reserves a scrollbar, which shifts the centred
-              sheet by half the scrollbar and left the two visibly out of
-              register. Sharing one centring context makes them agree exactly,
-              and sticky keeps the ruler visible while scrolling. */}
+          {/* Full column width, so the white band meets the AI panel with no
+              gap. The page below keeps its own centring: the scroll container
+              reserves its scrollbar gutter on both edges, which puts the sheet
+              on the column's true centre -- the same axis this row centres on. */}
+          {showRuler && editable && (
+            <div className="hidden bg-surface lg:block">
+              <Ruler
+                leftMargin={margins.left}
+                rightMargin={margins.right}
+                onChange={setMargins}
+                zoom={zoom}
+              />
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 pb-0 pt-0 [scrollbar-gutter:stable_both-edges] sm:px-4 sm:pb-8">
           {/* `zoom` rather than a transform: it scales the box itself, so the
               page keeps flowing in the scroll container instead of overlapping
               whatever follows it. */}
-            {showRuler && editable && (
-              <div className="sticky top-0 z-10 -mx-4 mb-8 hidden bg-surface px-4 shadow-pill lg:block">
-                <Ruler
-                  leftMargin={margins.left}
-                  rightMargin={margins.right}
-                  onChange={setMargins}
-                  zoom={zoom}
-                />
-              </div>
-            )}
-
             {/*
               Docked under the ruler rather than in the toolbar. Sticky so it
               stays put while the page scrolls; the wrapper ignores pointer
