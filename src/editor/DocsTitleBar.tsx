@@ -146,7 +146,8 @@ export function DocsTitleBar({
   const initial = displayName.trim().charAt(0).toUpperCase() || 'G'
 
   return (
-    <div className="flex items-start gap-1 bg-surface px-3 pt-1.5">
+    <div className="bg-surface px-3 pt-1.5">
+    <div className="flex items-start gap-1">
       <Link
         to={backTo}
         title={backLabel}
@@ -215,7 +216,6 @@ export function DocsTitleBar({
           <SaveStatus state={saveState} />
         </div>
 
-        <div className="-ml-1 flex min-w-0 items-center">{menubar}</div>
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 pt-1">
@@ -322,6 +322,17 @@ export function DocsTitleBar({
             </div>
           )}
         </div>
+      </div>
+    </div>
+
+      {/*
+        The menus sit in their own full-width row rather than under the title.
+        Nested in the title's column they would centre on that column's axis,
+        which is offset from the toolbar's by the width of the document icon
+        and the controls on the right -- close enough to look like a mistake.
+      */}
+      <div className="flex min-w-0 items-center justify-center overflow-x-auto">
+        {menubar}
       </div>
     </div>
   )
