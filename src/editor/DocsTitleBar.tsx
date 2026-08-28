@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, Link2, Redo2, Star, Undo2 } from 'lucide-react'
-import { useEditorState, type Editor } from '@tiptap/react'
+import { ChevronDown, Link2, Star } from 'lucide-react'
 import { AppDocIcon, SparkIcon } from './DocsIcons'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { useAuth } from '../contexts/AuthContext'
@@ -28,8 +27,6 @@ interface DocsTitleBarProps {
   menubar: ReactNode
   aiOpen: boolean
   onToggleAi: () => void
-  /** Drives the undo/redo pair that sits beside the star. */
-  editor: Editor | null
 }
 
 const STAR_PREFIX = 'margin:starred:'
@@ -76,21 +73,10 @@ export function DocsTitleBar({
   menubar,
   aiOpen,
   onToggleAi,
-  editor,
 }: DocsTitleBarProps) {
   const { profile, session, signOut } = useAuth()
   const signedIn = Boolean(session)
 
-  // Subscribed rather than read during render: Tiptap 3 does not re-render
-  // React per transaction, so the enabled state would otherwise go stale the
-  // moment the caret moved.
-  const history = useEditorState({
-    editor,
-    selector: ({ editor: instance }) =>
-      instance
-        ? { canUndo: instance.can().undo(), canRedo: instance.can().redo() }
-        : { canUndo: false, canRedo: false },
-  })
 
   const [starOverrides, setStarOverrides] = useState<Record<string, boolean>>({})
   const [shareNote, setShareNote] = useState<string | null>(null)
@@ -190,27 +176,6 @@ export function DocsTitleBar({
               strokeWidth={1.8}
               className={cn(starred && 'fill-docs-active-icon text-docs-active-icon')}
             />
-          </button>
-
-          <button
-            type="button"
-            title="Undo (Ctrl+Z)"
-            aria-label="Undo"
-            disabled={!history?.canUndo}
-            onClick={() => editor?.chain().focus().undo().run()}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-docs-icon transition-colors hover:bg-docs-chrome-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <Undo2 size={16} strokeWidth={1.8} />
-          </button>
-          <button
-            type="button"
-            title="Redo (Ctrl+Shift+Z)"
-            aria-label="Redo"
-            disabled={!history?.canRedo}
-            onClick={() => editor?.chain().focus().redo().run()}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-docs-icon transition-colors hover:bg-docs-chrome-hover disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <Redo2 size={16} strokeWidth={1.8} />
           </button>
 
           <SaveStatus state={saveState} />

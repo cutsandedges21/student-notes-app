@@ -4,7 +4,7 @@ import {
   Bold, Italic, Underline, List, ListOrdered, ListChecks,
   Strikethrough, Link2, Image as ImageIcon, RemoveFormatting,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Printer, Minus, Plus, SpellCheck, PaintRoller,
+  Printer, Minus, Plus, SpellCheck, PaintRoller, Search, Undo2, Redo2,
   MessageSquarePlus, ListIndentIncrease, ListIndentDecrease,
   Pencil, ChevronUp, ChevronDown,
 } from 'lucide-react'
@@ -278,6 +278,52 @@ export function FormattingToolbar({
   }
 
   /**
+   * Find, walking the document's text nodes.
+   *
+   * Searching the flattened text would be simpler, but its offsets don't map
+   * back onto ProseMirror positions, so the selection would land in the wrong
+   * place in any document with more than one block.
+   */
+  const findInDocument = () => {
+    const query = window.prompt('Find in document')?.trim()
+    if (!query) return
+
+    const needle = query.toLowerCase()
+    const after = editor.state.selection.to
+    let first = -1
+    let next = -1
+
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return
+      const haystack = node.text.toLowerCase()
+
+      for (
+        let index = haystack.indexOf(needle);
+        index !== -1;
+        index = haystack.indexOf(needle, index + 1)
+      ) {
+        const at = pos + index
+        if (first === -1) first = at
+        // Wraps to the top once the caret is past the last match.
+        if (next === -1 && at >= after) next = at
+      }
+    })
+
+    const hit = next === -1 ? first : next
+    if (hit === -1) {
+      window.alert(`No matches for "${query}".`)
+      return
+    }
+
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from: hit, to: hit + query.length })
+      .scrollIntoView()
+      .run()
+  }
+
+  /**
    * Paint format is a two-click tool: the first click copies the formatting
    * under the caret, the second applies it to whatever is selected.
    */
@@ -372,48 +418,65 @@ export function FormattingToolbar({
       role="toolbar"
       aria-label="Text formatting"
       onKeyDown={handleKeyDown}
-      className="flex shrink-0 items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5"
+      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5"
     >
-      {/* Balances the mode switch on the right so the pill sits centred. Both
-          tracks collapse to nothing once the pill needs the full width, at
-          which point it simply scrolls as before. */}
-      <div className="hidden flex-1 lg:block" aria-hidden="true" />
+      {/*
+        Document-level actions live in their own pill on the left. The grid's
+        two 1fr tracks are equal by definition, so the formatting pill in the
+        middle stays on the window's centre however wide these sides become.
+      */}
+      <div className="flex min-w-0 items-center justify-start">
+        <div className="flex items-center gap-0.5 rounded-[18px] bg-docs-toolbar px-2 py-1">
+          <ToolButton
+            label="Undo"
+            icon={Undo2}
+            disabled={!state.canUndo}
+            onClick={() => editor.chain().focus().undo().run()}
+          />
+          <ToolButton
+            label="Redo"
+            icon={Redo2}
+            disabled={!state.canRedo}
+            onClick={() => editor.chain().focus().redo().run()}
+          />
+          <ToolButton label="Find in document" icon={Search} onClick={findInDocument} />
+          <ToolButton label="Print" icon={Printer} onClick={() => window.print()} />
+          {/* No pressed state: spell check is on by default, and Docs leaves
+              the button plain rather than lighting up on load. */}
+          <ToolButton
+            label={spellcheck ? 'Turn off spell check' : 'Turn on spell check'}
+            icon={SpellCheck}
+            onClick={() => setSpellcheck((on) => !on)}
+          />
+          <ToolButton
+            label={copiedFormat ? 'Apply copied formatting' : 'Paint format'}
+            icon={PaintRoller}
+            active={Boolean(copiedFormat)}
+            onClick={paintFormat}
+          />
+
+          {/* Wide enough for "100%" plus the chevron; at 66px the label was
+              clipped by the trigger's own truncation. */}
+          <ToolbarDropdown label="Zoom" width={82} trigger={`${Math.round(zoom * 100)}%`}>
+            {(close) =>
+              ZOOM_LEVELS.map((level) => (
+                <DropdownItem
+                  key={level}
+                  active={level === zoom}
+                  onSelect={() => {
+                    onZoomChange?.(level)
+                    close()
+                  }}
+                >
+                  {Math.round(level * 100)}%
+                </DropdownItem>
+              ))
+            }
+          </ToolbarDropdown>
+        </div>
+      </div>
 
       <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-[18px] bg-docs-toolbar px-2 py-1">
-        <ToolButton label="Print" icon={Printer} onClick={() => window.print()} />
-        {/* No pressed state: spell check is on by default, and Docs leaves the
-            button plain rather than lighting up the whole row on load. */}
-        <ToolButton
-          label={spellcheck ? 'Turn off spell check' : 'Turn on spell check'}
-          icon={SpellCheck}
-          onClick={() => setSpellcheck((on) => !on)}
-        />
-        <ToolButton
-          label={copiedFormat ? 'Apply copied formatting' : 'Paint format'}
-          icon={PaintRoller}
-          active={Boolean(copiedFormat)}
-          onClick={paintFormat}
-        />
-
-        <ToolbarDropdown label="Zoom" width={66} trigger={`${Math.round(zoom * 100)}%`}>
-          {(close) =>
-            ZOOM_LEVELS.map((level) => (
-              <DropdownItem
-                key={level}
-                active={level === zoom}
-                onSelect={() => {
-                  onZoomChange?.(level)
-                  close()
-                }}
-              >
-                {Math.round(level * 100)}%
-              </DropdownItem>
-            ))
-          }
-        </ToolbarDropdown>
-
-        <Divider />
-
         <ToolbarDropdown
           label="Text style"
           width={118}
@@ -675,7 +738,7 @@ export function FormattingToolbar({
 
       {/* Mode switch and collapse chevron sit outside the pill, on the white
           chrome, exactly as they do in Docs. */}
-      <div className="ml-auto flex shrink-0 items-center justify-end gap-1 lg:ml-0 lg:flex-1">
+      <div className="flex shrink-0 items-center justify-end gap-1">
         <ToolbarDropdown
           label="Mode"
           width={102}

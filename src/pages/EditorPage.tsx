@@ -274,7 +274,6 @@ export default function EditorPage() {
             title={title}
             onTitleChange={handleTitleChange}
             saveState={displayState}
-            editor={editor}
             backTo={`/classes/${classId}`}
             backLabel={klass ? `Back to ${klass.name}` : 'Back to class'}
             aiOpen={sidebarOpen}
