@@ -2,20 +2,28 @@ import StarterKit from '@tiptap/starter-kit'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Placeholder from '@tiptap/extension-placeholder'
+import TextAlign from '@tiptap/extension-text-align'
+import Highlight from '@tiptap/extension-highlight'
+import Image from '@tiptap/extension-image'
+import {
+  TextStyle,
+  Color,
+  FontFamily,
+  FontSize,
+  LineHeight,
+} from '@tiptap/extension-text-style'
 
 /**
  * The editor's extension set.
  *
- * StarterKit (Tiptap 3) supplies paragraphs, headings, bold/italic/strike,
- * bullet and ordered lists (with nesting), blockquote, horizontal rule, code,
- * underline, link, and the undo/redo history — including the Ctrl/Cmd+B/I/Z/
- * Shift+Z shortcuts.
+ * StarterKit supplies paragraphs, headings, bold/italic/strike, bullet and
+ * ordered lists (with nesting), blockquote, horizontal rule, code, link,
+ * underline, and the undo/redo history -- including the Ctrl/Cmd+B/I/Z/Shift+Z
+ * shortcuts. In Tiptap 3 link and underline ship inside StarterKit rather than
+ * as standalone packages, so they are configured here rather than imported.
  *
- * Underline and Link are configured here through `StarterKit.configure`
- * rather than imported as standalone `@tiptap/extension-underline` /
- * `@tiptap/extension-link` extensions: in Tiptap 3 both ship bundled inside
- * StarterKit itself, and registering them a second time as separate
- * extensions would create duplicate "underline"/"link" extension names.
+ * TextStyle is the base mark that Color, FontFamily, FontSize and LineHeight
+ * all attach to -- without it those four silently do nothing.
  */
 export const editorExtensions = [
   StarterKit.configure({
@@ -26,6 +34,14 @@ export const editorExtensions = [
       HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
     },
   }),
+  TextStyle,
+  Color,
+  FontFamily,
+  FontSize,
+  LineHeight,
+  Highlight.configure({ multicolor: true }),
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Image.configure({ inline: false, HTMLAttributes: { class: 'doc-image' } }),
   TaskList,
   TaskItem.configure({ nested: true }),
   Placeholder.configure({ placeholder: 'Start typing your notes…' }),

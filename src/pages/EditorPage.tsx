@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
 import { DocumentEditor } from '../editor/DocumentEditor'
+import { DocumentMenubar } from '../editor/DocumentMenubar'
+import type { Editor } from '@tiptap/react'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { Button } from '../components/ui/Button'
 import { AiDrawer } from '../components/AiDrawer'
@@ -9,7 +11,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { createAutosaveScheduler } from '../lib/autosave'
 import { fetchClass } from '../services/classes'
-import { fetchDocument, saveDocument } from '../services/documents'
+import { createDocument, deleteDocument, fetchDocument, saveDocument } from '../services/documents'
 import { AI_SIDEBAR_SIDE, AI_SIDEBAR_WIDTH_PX } from '../constants/layout'
 import { cn } from '../lib/cn'
 import type { ClassRow, DocumentRow } from '../types/database'
@@ -33,7 +35,12 @@ export default function EditorPage() {
   const [doc, setDoc] = useState<DocumentRow | null>(null)
   const [title, setTitle] = useState('')
   const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Closed by default: the panel is still a placeholder, and an empty 360px
+  // column would crowd the formatting toolbar into a horizontal scroll.
+  // Ctrl/Cmd+Shift+A and the AI button both open it.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [editor, setEditor] = useState<Editor | null>(null)
+  const navigate = useNavigate()
 
   // The version the client last read. Every save is conditional on it, and it
   // advances on each successful write. Held in a ref so the scheduler always
@@ -142,46 +149,86 @@ export default function EditorPage() {
     })
   }
 
+  async function handleNewNote() {
+    if (!classId) return
+    // Flush first: navigating away otherwise drops anything still debounced.
+    await scheduler.flush()
+    const created = await createDocument(userId, classId)
+    navigate(`/classes/${classId}/documents/${created.id}`)
+  }
+
+  async function handleDeleteNote() {
+    if (!documentId || !classId) return
+    if (!window.confirm(`Delete "${title || 'Untitled note'}"? This cannot be undone.`)) return
+
+    scheduler.cancel()
+    await deleteDocument(userId, documentId)
+    navigate(`/classes/${classId}`, { replace: true })
+  }
+
+  function focusTitle() {
+    const input = document.getElementById('doc-title') as HTMLInputElement | null
+    input?.focus()
+    input?.select()
+  }
+
   if (!doc) return null
 
   const displayState: SaveState = online ? saveState : 'offline'
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-surface px-4">
-        <Link
-          to={`/classes/${classId}`}
-          className="shrink-0 text-sm text-ink-muted hover:text-ink"
-        >
-          ←
-        </Link>
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          {klass && (
-            <span className="hidden shrink-0 text-sm text-ink-muted sm:inline">
-              {klass.name} ›
-            </span>
-          )}
-          <label htmlFor="doc-title" className="sr-only">
-            Note title
-          </label>
-          <input
-            id="doc-title"
-            value={title}
-            placeholder="Untitled note"
-            onChange={(event) => handleTitleChange(event.target.value)}
-            className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-base text-ink placeholder:text-ink-faint hover:border-line-strong focus:border-line-strong"
-          />
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-3">
-          <SaveStatus state={displayState} />
-          <Button
-            size="sm"
-            title="Toggle AI assistant (Ctrl+Shift+A)"
-            aria-expanded={sidebarOpen}
-            onClick={() => setSidebarOpen((open) => !open)}
+      <header className="shrink-0 border-b border-line bg-surface px-4 pt-2">
+        <div className="flex items-center gap-3">
+          <Link
+            to={`/classes/${classId}`}
+            title="Back to class"
+            className="shrink-0 rounded px-1 text-lg text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
           >
-            AI
-          </Button>
+            ←
+          </Link>
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-w-0 items-center gap-2">
+              <label htmlFor="doc-title" className="sr-only">
+                Note title
+              </label>
+              <input
+                id="doc-title"
+                value={title}
+                placeholder="Untitled note"
+                onChange={(event) => handleTitleChange(event.target.value)}
+                className="min-w-0 max-w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-lg text-ink placeholder:text-ink-faint hover:border-line-strong focus:border-line-strong"
+                size={Math.max(12, Math.min(48, title.length || 12))}
+              />
+              <SaveStatus state={displayState} />
+            </div>
+
+            <div className="-ml-0.5 flex items-center gap-2">
+              <DocumentMenubar
+                editor={editor}
+                onNewNote={() => void handleNewNote()}
+                onRename={focusTitle}
+                onDelete={() => void handleDeleteNote()}
+              />
+              {klass && (
+                <span className="hidden truncate text-xs text-ink-faint sm:inline">
+                  {klass.name}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="ml-auto flex shrink-0 items-center gap-3 self-start pt-1">
+            <Button
+              size="sm"
+              title="Toggle AI assistant (Ctrl+Shift+A)"
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen((open) => !open)}
+            >
+              AI
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -212,6 +259,7 @@ export default function EditorPage() {
             version={doc.version}
             initialContent={doc.content as JSONContent}
             onChange={handleContentChange}
+            onReady={setEditor}
           />
         </main>
       </div>

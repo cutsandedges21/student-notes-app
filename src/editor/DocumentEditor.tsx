@@ -1,7 +1,10 @@
-import { EditorContent, useEditor, type JSONContent } from '@tiptap/react'
-import { useEffect } from 'react'
+import { EditorContent, useEditor, type Editor, type JSONContent } from '@tiptap/react'
+import { useEffect, useState } from 'react'
 import { editorExtensions } from './extensions'
 import { FormattingToolbar } from './FormattingToolbar'
+import { Ruler } from './Ruler'
+
+const DEFAULT_MARGIN = 96
 
 interface DocumentEditorProps {
   /** Initial content. Changes to this prop reload the editor document. */
@@ -14,6 +17,8 @@ interface DocumentEditorProps {
    */
   version: number
   onChange: (content: JSONContent) => void
+  /** Receives the editor instance so the page can drive the menubar. */
+  onReady?: (editor: Editor | null) => void
 }
 
 export function DocumentEditor({
@@ -21,7 +26,10 @@ export function DocumentEditor({
   documentId,
   version,
   onChange,
+  onReady,
 }: DocumentEditorProps) {
+  const [margins, setMargins] = useState({ left: DEFAULT_MARGIN, right: DEFAULT_MARGIN })
+
   const editor = useEditor({
     extensions: editorExtensions,
     content: initialContent,
@@ -35,6 +43,10 @@ export function DocumentEditor({
       onChange(instance.getJSON())
     },
   })
+
+  useEffect(() => {
+    onReady?.(editor)
+  }, [editor, onReady])
 
   // Swap content when navigating between documents without remounting the
   // editor. `emitUpdate: false` suppresses an onUpdate, so loading never
@@ -55,8 +67,16 @@ export function DocumentEditor({
   return (
     <>
       <FormattingToolbar editor={editor} />
+      <Ruler
+        leftMargin={margins.left}
+        rightMargin={margins.right}
+        onChange={setMargins}
+      />
       <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 py-0 sm:px-4 sm:py-8">
-        <div className="mx-auto min-h-full max-w-sheet bg-surface px-6 py-8 sm:min-h-[1056px] sm:px-12 sm:py-14 sm:shadow-sheet lg:px-16">
+        <div
+          style={{ paddingLeft: margins.left, paddingRight: margins.right }}
+          className="mx-auto min-h-full max-w-sheet bg-surface py-8 sm:min-h-[1056px] sm:py-14 sm:shadow-sheet"
+        >
           <EditorContent editor={editor} />
         </div>
       </div>

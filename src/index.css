@@ -95,3 +95,41 @@
   @apply pointer-events-none float-left h-0 text-ink-faint;
   content: attr(data-placeholder);
 }
+
+/*
+ * Google Docs-style editor affordances. Same rule as the block above: NOT
+ * inside `@layer components`, because these class names are injected at
+ * runtime by Tiptap and the JIT purge would drop them silently.
+ */
+.ProseMirror mark {
+  /* Highlight.configure({ multicolor: true }) writes the chosen colour as an
+     inline style, which wins over this rule. The yellow here is the fallback
+     for a highlight applied without a colour -- `inherit` would render it
+     invisible, which reads as the button being broken. */
+  @apply rounded-sm bg-yellow-200 px-0.5;
+}
+
+.ProseMirror .doc-image {
+  @apply my-3 h-auto max-w-full rounded;
+}
+
+.ProseMirror .doc-image.ProseMirror-selectednode {
+  @apply outline outline-2 outline-accent;
+}
+
+/* Alignment is written as an inline style attribute by TextAlign; nothing to
+   declare here. Line height likewise. */
+
+@media print {
+  /* Printing should produce the document, not the app chrome. */
+  header,
+  aside,
+  [role='toolbar'],
+  [role='slider'] {
+    display: none !important;
+  }
+
+  .ProseMirror {
+    padding: 0 !important;
+  }
+}
