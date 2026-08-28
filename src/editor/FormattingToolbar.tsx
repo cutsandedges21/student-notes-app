@@ -22,6 +22,9 @@ interface FormattingToolbarProps {
   /** True while the title and menu rows are hidden by the collapse chevron. */
   compact?: boolean
   onToggleCompact?: () => void
+  /** Controlled by the page, which hides all chrome while viewing. */
+  editable?: boolean
+  onEditableChange?: (editable: boolean) => void
 }
 
 /**
@@ -182,26 +185,21 @@ export function FormattingToolbar({
   onZoomChange,
   compact = false,
   onToggleCompact,
+  editable = true,
+  onEditableChange,
 }: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
 
+  const setEditable = onEditableChange ?? (() => undefined)
   const [copiedFormat, setCopiedFormat] = useState<CopiedFormat | null>(null)
   const [spellcheck, setSpellcheck] = useState(true)
-  const [editable, setEditable] = useState(true)
 
   // The browser's own spell checker is what the A-with-a-tick button drives;
   // the attribute lives on the contenteditable node, not in editor state.
   useEffect(() => {
     editor?.view.dom.setAttribute('spellcheck', String(spellcheck))
   }, [editor, spellcheck])
-
-  // The second argument suppresses the update event. Left on, mounting the
-  // toolbar would emit one, autosave would fire, and every note would report
-  // "Saved" the instant it opened without anything having been edited.
-  useEffect(() => {
-    editor?.setEditable(editable, false)
-  }, [editor, editable])
 
   /**
    * Every readout and active state the toolbar shows, derived in one
@@ -376,6 +374,11 @@ export function FormattingToolbar({
       onKeyDown={handleKeyDown}
       className="flex shrink-0 items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5"
     >
+      {/* Balances the mode switch on the right so the pill sits centred. Both
+          tracks collapse to nothing once the pill needs the full width, at
+          which point it simply scrolls as before. */}
+      <div className="hidden flex-1 lg:block" aria-hidden="true" />
+
       <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-[18px] bg-docs-toolbar px-2 py-1">
         <ToolButton label="Print" icon={Printer} onClick={() => window.print()} />
         {/* No pressed state: spell check is on by default, and Docs leaves the
@@ -672,7 +675,7 @@ export function FormattingToolbar({
 
       {/* Mode switch and collapse chevron sit outside the pill, on the white
           chrome, exactly as they do in Docs. */}
-      <div className="ml-auto flex shrink-0 items-center gap-1">
+      <div className="ml-auto flex shrink-0 items-center justify-end gap-1 lg:ml-0 lg:flex-1">
         <ToolbarDropdown
           label="Mode"
           width={102}

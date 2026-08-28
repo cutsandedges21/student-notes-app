@@ -37,7 +37,6 @@ interface AiSidebarProps {
   selection: AiSelection | null
   /** Runs when the student accepts a suggestion. */
   onApply: (content: string, selection: AiSelection | null) => void
-  onClose: () => void
   /** Set by the editor page when a selection action is triggered from the document. */
   pendingMode: { mode: AiMode; selection: AiSelection } | null
   onPendingHandled: () => void
@@ -50,7 +49,6 @@ export function AiSidebar({
   classId,
   selection,
   onApply,
-  onClose,
   pendingMode,
   onPendingHandled,
 }: AiSidebarProps) {
@@ -137,19 +135,6 @@ export function AiSidebar({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-line px-4">
-        <h2 className="text-sm font-medium text-ink">AI Assistant</h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close AI assistant"
-          title="Close AI assistant (Ctrl+Shift+A)"
-          className="rounded px-1.5 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
-        >
-          ×
-        </button>
-      </div>
-
       {/*
         The assistant reads your class notes from the database, so it needs an
         account. Saying so up front beats letting a guest press the actions and

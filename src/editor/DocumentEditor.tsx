@@ -46,6 +46,9 @@ interface DocumentEditorProps {
    * shorten the toolbar and push the whole chrome around.
    */
   sidebar?: ReactNode
+  /** False puts the document into read-only view mode. */
+  editable?: boolean
+  onEditableChange?: (editable: boolean) => void
 }
 
 export function DocumentEditor({
@@ -59,6 +62,8 @@ export function DocumentEditor({
   compact = false,
   onToggleCompact,
   sidebar,
+  editable = true,
+  onEditableChange,
 }: DocumentEditorProps) {
   const [margins, setMargins] = useState({ left: DEFAULT_MARGIN, right: DEFAULT_MARGIN })
   const [zoom, setZoom] = useState(1)
@@ -111,6 +116,14 @@ export function DocumentEditor({
     onReady?.(editor)
   }, [editor, onReady])
 
+  // Owned here rather than in the toolbar, which unmounts in view mode and so
+  // could never switch editing back on. The second argument suppresses the
+  // update event: without it, mounting would emit one, autosave would fire,
+  // and every note would report "Saved" the instant it opened.
+  useEffect(() => {
+    editor?.setEditable(editable, false)
+  }, [editor, editable])
+
   // Swap content when navigating between documents without remounting the
   // editor. `emitUpdate: false` suppresses an onUpdate, so loading never
   // marks the document dirty and never triggers a spurious save.
@@ -129,20 +142,26 @@ export function DocumentEditor({
 
   return (
     <>
-      <FormattingToolbar
-        editor={editor}
-        zoom={zoom}
-        onZoomChange={setZoom}
-        compact={compact}
-        onToggleCompact={onToggleCompact}
-      />
+      {/* Viewing mode strips the chrome entirely so the page gets the window,
+          which is the whole point of switching to it. */}
+      {editable && (
+        <FormattingToolbar
+          editor={editor}
+          zoom={zoom}
+          onZoomChange={setZoom}
+          compact={compact}
+          onToggleCompact={onToggleCompact}
+          editable={editable}
+          onEditableChange={onEditableChange}
+        />
+      )}
       <div
         className={cn(
           'flex min-h-0 flex-1',
           AI_SIDEBAR_SIDE === 'right' && 'flex-row-reverse',
         )}
       >
-        {sidebar && (
+        {sidebar && editable && (
           <aside
             style={{ width: AI_SIDEBAR_WIDTH_PX }}
             aria-label="AI assistant"
@@ -166,7 +185,7 @@ export function DocumentEditor({
           {/* `zoom` rather than a transform: it scales the box itself, so the
               page keeps flowing in the scroll container instead of overlapping
               whatever follows it. */}
-            {showRuler && (
+            {showRuler && editable && (
               <div className="sticky top-0 z-10 -mx-4 mb-8 hidden bg-surface-backdrop px-4 lg:block">
                 <Ruler
                   leftMargin={margins.left}

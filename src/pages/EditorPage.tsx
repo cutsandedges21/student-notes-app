@@ -10,6 +10,7 @@ import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
 import { snapshotDocument } from '../services/documents'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
+import { Pencil } from 'lucide-react'
 import { type SaveState } from '../components/SaveStatus'
 import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
@@ -44,6 +45,7 @@ export default function EditorPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [editable, setEditable] = useState(true)
   const [selection, setSelection] = useState<
     (AiSelection & { coords: { top: number; left: number } }) | null
   >(null)
@@ -267,7 +269,7 @@ export default function EditorPage() {
     <div className="flex h-full flex-col">
       {!compact && (
         <header className="shrink-0 bg-surface">
-          <DocsTitleBar
+          {editable && <DocsTitleBar
             documentId={doc.id}
             title={title}
             onTitleChange={handleTitleChange}
@@ -290,7 +292,7 @@ export default function EditorPage() {
                 onToggleCompact={() => setCompact((on) => !on)}
               />
             }
-          />
+          />}
         </header>
       )}
 
@@ -305,6 +307,8 @@ export default function EditorPage() {
           showRuler={showRuler}
           compact={compact}
           onToggleCompact={() => setCompact((on) => !on)}
+          editable={editable}
+          onEditableChange={setEditable}
           // Permanently docked on desktop; the drawer below covers narrow
           // screens, where a 360px column would leave no room to write.
           sidebar={
@@ -315,7 +319,6 @@ export default function EditorPage() {
               pendingMode={pendingMode}
               onPendingHandled={() => setPendingMode(null)}
               onApply={(content, target) => void handleApplySuggestion(content, target)}
-              onClose={() => setSidebarOpen(false)}
             />
           }
         />
@@ -329,9 +332,19 @@ export default function EditorPage() {
           pendingMode={pendingMode}
           onPendingHandled={() => setPendingMode(null)}
           onApply={(content, target) => void handleApplySuggestion(content, target)}
-          onClose={() => setSidebarOpen(false)}
         />
       </AiDrawer>
+
+      {!editable && (
+        <button
+          type="button"
+          onClick={() => setEditable(true)}
+          className="fixed right-5 top-5 z-40 flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 font-ui text-sm text-ink shadow-pill transition-colors hover:bg-surface-hover"
+        >
+          <Pencil size={15} className="text-docs-icon" />
+          Back to editing
+        </button>
+      )}
 
       <SelectionToolbar
         position={selection?.coords ?? null}

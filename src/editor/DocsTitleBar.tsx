@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, Lock, MessageSquareText, Redo2, Star, Undo2, Video } from 'lucide-react'
+import { ChevronDown, Link2, Redo2, Star, Undo2 } from 'lucide-react'
 import { useEditorState, type Editor } from '@tiptap/react'
 import { AppDocIcon, SparkIcon } from './DocsIcons'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
@@ -219,17 +219,6 @@ export function DocsTitleBar({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 pt-1">
-        <ChromeButton label="Open comment history" unavailable className="hidden lg:grid">
-          <MessageSquareText size={20} strokeWidth={1.8} />
-        </ChromeButton>
-
-        <div className="hidden items-center lg:flex">
-          <ChromeButton label="Join a call" unavailable>
-            <Video size={20} strokeWidth={1.8} />
-          </ChromeButton>
-          <ChevronDown size={16} className="-ml-2 mr-1 text-docs-icon" aria-hidden="true" />
-        </div>
-
         <button
           type="button"
           onClick={() => void copyLink()}
@@ -239,7 +228,7 @@ export function DocsTitleBar({
             'font-ui text-sm font-medium text-docs-chip-text transition-colors hover:bg-docs-chip-hover',
           )}
         >
-          <Lock size={14} strokeWidth={2} />
+          <Link2 size={15} strokeWidth={2} />
           <span className="hidden sm:inline">{shareNote ?? 'Share'}</span>
           <span
             className="ml-1 hidden h-5 w-px bg-docs-chip-text/25 sm:block"
@@ -247,6 +236,17 @@ export function DocsTitleBar({
           />
           <ChevronDown size={16} className="hidden sm:block" aria-hidden="true" />
         </button>
+
+        {/* The panel is permanently docked from `lg` up, so no trigger is
+            needed there. Below that it opens as a drawer, which still has to
+            be reachable from somewhere. */}
+        <ChromeButton
+          label="AI assistant (Ctrl+Shift+A)"
+          onClick={onToggleAi}
+          className={cn('lg:hidden', aiOpen && 'bg-docs-chrome-hover')}
+        >
+          <SparkIcon size={20} />
+        </ChromeButton>
 
         <Link
           to="/signup"
@@ -262,14 +262,6 @@ export function DocsTitleBar({
         >
           Upgrade
         </Link>
-
-        <ChromeButton
-          label="AI assistant (Ctrl+Shift+A)"
-          onClick={onToggleAi}
-          className={cn(aiOpen && 'bg-docs-chrome-hover')}
-        >
-          <SparkIcon size={20} />
-        </ChromeButton>
 
         <div ref={accountRef} className="relative">
           <button

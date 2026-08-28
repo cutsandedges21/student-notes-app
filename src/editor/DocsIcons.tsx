@@ -16,16 +16,37 @@ interface IconProps {
  * The app mark, shaped like the document icon that anchors the title row.
  */
 export function AppDocIcon({ className }: { className?: string }) {
+  // Same geometry as public/icon.svg, so the tab favicon and the in-app mark
+  // are one design rather than two drifting copies.
   return (
-    <svg viewBox="0 0 24 32" className={className} aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 512 512"
+      className={className}
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path
-        d="M3 0h12l9 9v20a3 3 0 0 1-3 3H3a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3Z"
-        fill="#1a73e8"
+        d="M88 24h258l82 82v382a24 24 0 0 1-24 24H88a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z"
+        fill="#f5f5f5"
       />
-      <path d="M15 0l9 9h-9V0Z" fill="#a8c7fa" />
-      <rect x="5" y="14" width="14" height="1.8" rx=".9" fill="#fff" />
-      <rect x="5" y="18" width="14" height="1.8" rx=".9" fill="#fff" />
-      <rect x="5" y="22" width="9" height="1.8" rx=".9" fill="#fff" />
+      <path d="M346 24l82 82h-82V24Z" fill="#e6e6e6" />
+      <g
+        stroke="currentColor"
+        strokeWidth="22"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M282 24H88a24 24 0 0 0-24 24v440a24 24 0 0 0 24 24h84" />
+        <path d="M224 512h192a24 24 0 0 0 24-24V310" />
+        <path d="M440 248V106l-82-82h-42" />
+        <path d="M346 24v58a24 24 0 0 0 24 24h58" />
+        <path d="M134 24v198" />
+        <path d="M134 288v224" />
+        <path d="M64 82h282" />
+        <path d="M64 448h376" />
+        <path d="M380 106v342" />
+      </g>
     </svg>
   )
 }

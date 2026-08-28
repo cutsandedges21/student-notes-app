@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!--
+    Margin's mark: a sheet with a folded corner and a ruled left margin.
+
+    Authored as vector rather than traced from a raster so it stays crisp at
+    every favicon size and carries no background of its own - a transparent
+    mark sits correctly on light and dark browser chrome alike.
+  -->
+  <path
+    d="M88 24h258l82 82v382a24 24 0 0 1-24 24H88a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z"
+    fill="#f5f5f5"
+  />
+  <path d="M346 24l82 82h-82V24Z" fill="#e6e6e6" />
+
+  <g stroke="#000" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Sheet outline, split so the folded corner reads as a separate plane. -->
+    <path d="M282 24H88a24 24 0 0 0-24 24v440a24 24 0 0 0 24 24h84" />
+    <path d="M224 512h192a24 24 0 0 0 24-24V310" />
+    <path d="M440 248V106l-82-82h-42" />
+    <path d="M346 24v58a24 24 0 0 0 24 24h58" />
+
+    <!-- Ruled margin line, broken at the header and footer rules. -->
+    <path d="M134 24v198" />
+    <path d="M134 288v224" />
+
+    <!-- Header and footer rules. -->
+    <path d="M64 82h282" />
+    <path d="M64 448h376" />
+    <path d="M380 106v342" />
+  </g>
+</svg>
