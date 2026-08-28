@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, Link2, Star } from 'lucide-react'
+import { Star } from 'lucide-react'
 import { AppDocIcon, SparkIcon } from './DocsIcons'
+import { ShareMenu } from './ShareMenu'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { useAuth } from '../contexts/AuthContext'
 import { cn } from '../lib/cn'
@@ -79,7 +80,6 @@ export function DocsTitleBar({
 
 
   const [starOverrides, setStarOverrides] = useState<Record<string, boolean>>({})
-  const [shareNote, setShareNote] = useState<string | null>(null)
   const [accountOpen, setAccountOpen] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
 
@@ -99,15 +99,6 @@ export function DocsTitleBar({
     setStarOverrides((current) => ({ ...current, [documentId]: !starred }))
   }
 
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href)
-      setShareNote('Link copied')
-    } catch {
-      setShareNote('Copy failed')
-    }
-    window.setTimeout(() => setShareNote(null), 2000)
-  }
 
   // Same dismissal contract as every other transient surface in the app.
   useEffect(() => {
@@ -184,23 +175,7 @@ export function DocsTitleBar({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 pt-1">
-        <button
-          type="button"
-          onClick={() => void copyLink()}
-          title="Copy a link to this note"
-          className={cn(
-            'flex h-9 shrink-0 items-center gap-2 rounded-full bg-docs-chip px-3 sm:pl-4 sm:pr-3',
-            'font-ui text-sm font-medium text-docs-chip-text transition-colors hover:bg-docs-chip-hover',
-          )}
-        >
-          <Link2 size={15} strokeWidth={2} />
-          <span className="hidden sm:inline">{shareNote ?? 'Share'}</span>
-          <span
-            className="ml-1 hidden h-5 w-px bg-docs-chip-text/25 sm:block"
-            aria-hidden="true"
-          />
-          <ChevronDown size={16} className="hidden sm:block" aria-hidden="true" />
-        </button>
+        <ShareMenu documentId={documentId} />
 
         {/* The panel is permanently docked from `lg` up, so no trigger is
             needed there. Below that it opens as a drawer, which still has to
@@ -296,7 +271,9 @@ export function DocsTitleBar({
         which is offset from the toolbar's by the width of the document icon
         and the controls on the right -- close enough to look like a mistake.
       */}
-      <div className="flex min-w-0 items-center justify-center overflow-x-auto">
+      {/* Offset by the docked AI panel so the menus centre on the document,
+          matching the toolbar below them. */}
+      <div className="flex min-w-0 items-center justify-center overflow-x-auto lg:pl-[360px]">
         {menubar}
       </div>
     </div>

@@ -6,7 +6,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Printer, Minus, Plus, SpellCheck, PaintRoller, Search, Undo2, Redo2,
   MessageSquarePlus, ListIndentIncrease, ListIndentDecrease,
-  Pencil, ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
@@ -22,9 +22,6 @@ interface FormattingToolbarProps {
   /** True while the title and menu rows are hidden by the collapse chevron. */
   compact?: boolean
   onToggleCompact?: () => void
-  /** Controlled by the page, which hides all chrome while viewing. */
-  editable?: boolean
-  onEditableChange?: (editable: boolean) => void
 }
 
 /**
@@ -185,13 +182,10 @@ export function FormattingToolbar({
   onZoomChange,
   compact = false,
   onToggleCompact,
-  editable = true,
-  onEditableChange,
 }: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
 
-  const setEditable = onEditableChange ?? (() => undefined)
   const [copiedFormat, setCopiedFormat] = useState<CopiedFormat | null>(null)
   const [spellcheck, setSpellcheck] = useState(true)
 
@@ -418,14 +412,20 @@ export function FormattingToolbar({
       role="toolbar"
       aria-label="Text formatting"
       onKeyDown={handleKeyDown}
-      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5"
+      // The left padding matches the docked AI panel, so the centre column
+      // lands on the document's centre rather than the window's. Applied from
+      // lg up only, which is exactly where the panel is docked.
+      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 bg-surface px-3 pb-1.5 pt-0.5 lg:pl-[calc(360px+0.75rem)]"
     >
       {/*
         Document-level actions live in their own pill on the left. The grid's
         two 1fr tracks are equal by definition, so the formatting pill in the
         middle stays on the window's centre however wide these sides become.
       */}
-      <div className="flex min-w-0 items-center justify-start">
+      {/* Negative margin cancels the row's left padding for this cell only:
+          the middle column stays centred on the document, while these
+          document-level actions keep their place at the screen edge. */}
+      <div className="flex min-w-0 items-center justify-start lg:-ml-[calc(360px+0.75rem)] lg:pl-[18px]">
         <div className="flex items-center gap-0.5 rounded-[18px] bg-docs-toolbar px-2 py-1">
           <ToolButton
             label="Undo"
@@ -736,43 +736,9 @@ export function FormattingToolbar({
         />
       </div>
 
-      {/* Mode switch and collapse chevron sit outside the pill, on the white
-          chrome, exactly as they do in Docs. */}
+      {/* The mode switch now floats under the ruler; only the collapse
+          chevron remains on the chrome here. */}
       <div className="flex shrink-0 items-center justify-end gap-1">
-        <ToolbarDropdown
-          label="Mode"
-          width={102}
-          trigger={
-            <span className="flex items-center gap-2">
-              <Pencil size={16} className="text-docs-icon" />
-              {editable ? 'Editing' : 'Viewing'}
-            </span>
-          }
-        >
-          {(close) => (
-            <>
-              <DropdownItem
-                active={editable}
-                onSelect={() => {
-                  setEditable(true)
-                  close()
-                }}
-              >
-                Editing
-              </DropdownItem>
-              <DropdownItem
-                active={!editable}
-                onSelect={() => {
-                  setEditable(false)
-                  close()
-                }}
-              >
-                Viewing
-              </DropdownItem>
-            </>
-          )}
-        </ToolbarDropdown>
-
         <ToolButton
           label={compact ? 'Show the menus' : 'Hide the menus'}
           icon={compact ? ChevronDown : ChevronUp}

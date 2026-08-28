@@ -4,6 +4,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { editorExtensions } from './extensions'
 import { FormattingToolbar } from './FormattingToolbar'
 import { Ruler } from './Ruler'
+import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
+import { Pencil } from 'lucide-react'
 import { AI_SIDEBAR_SIDE, AI_SIDEBAR_WIDTH_PX } from '../constants/layout'
 import { cn } from '../lib/cn'
 
@@ -151,8 +153,6 @@ export function DocumentEditor({
           onZoomChange={setZoom}
           compact={compact}
           onToggleCompact={onToggleCompact}
-          editable={editable}
-          onEditableChange={onEditableChange}
         />
       )}
       <div
@@ -181,12 +181,12 @@ export function DocumentEditor({
               sheet by half the scrollbar and left the two visibly out of
               register. Sharing one centring context makes them agree exactly,
               and sticky keeps the ruler visible while scrolling. */}
-          <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 pb-0 pt-0 sm:px-4 sm:pb-8">
+          <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 pb-0 pt-0 [scrollbar-gutter:stable_both-edges] sm:px-4 sm:pb-8">
           {/* `zoom` rather than a transform: it scales the box itself, so the
               page keeps flowing in the scroll container instead of overlapping
               whatever follows it. */}
             {showRuler && editable && (
-              <div className="sticky top-0 z-10 -mx-4 mb-8 hidden bg-surface-backdrop px-4 lg:block">
+              <div className="sticky top-0 z-10 -mx-4 mb-8 hidden bg-surface px-4 lg:block">
                 <Ruler
                   leftMargin={margins.left}
                   rightMargin={margins.right}
@@ -195,6 +195,49 @@ export function DocumentEditor({
                 />
               </div>
             )}
+
+            {/*
+              Docked under the ruler rather than in the toolbar. Sticky so it
+              stays put while the page scrolls; the wrapper ignores pointer
+              events so it never blocks clicks on the document beneath it.
+            */}
+            <div className="pointer-events-none sticky top-[38px] z-20 -mt-2 mb-2 hidden justify-end lg:flex">
+              <div className="pointer-events-auto rounded-full border border-line bg-surface px-1 py-1 shadow-pill">
+                <ToolbarDropdown
+                  label="Mode"
+                  width={104}
+                  trigger={
+                    <span className="flex items-center gap-2">
+                      <Pencil size={16} className="text-docs-icon" />
+                      {editable ? 'Editing' : 'Viewing'}
+                    </span>
+                  }
+                >
+                  {(close) => (
+                    <>
+                      <DropdownItem
+                        active={editable}
+                        onSelect={() => {
+                          onEditableChange?.(true)
+                          close()
+                        }}
+                      >
+                        Editing
+                      </DropdownItem>
+                      <DropdownItem
+                        active={!editable}
+                        onSelect={() => {
+                          onEditableChange?.(false)
+                          close()
+                        }}
+                      >
+                        Viewing
+                      </DropdownItem>
+                    </>
+                  )}
+                </ToolbarDropdown>
+              </div>
+            </div>
 
             <div
               style={{ paddingLeft: margins.left, paddingRight: margins.right, zoom }}

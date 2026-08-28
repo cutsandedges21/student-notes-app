@@ -7,6 +7,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import ClassesPage from './pages/ClassesPage'
 import ClassPage from './pages/ClassPage'
 import EditorPage from './pages/EditorPage'
+import SharedDocumentPage from './pages/SharedDocumentPage'
 
 /**
  * No route requires an account. Signed-out visitors get the full app backed by
@@ -23,6 +24,10 @@ export default function App() {
           <Route path="/signup" element={<SignUpPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* Public: a share link must open without an account. What the
+              visitor can then do is decided by the owner's chosen mode and
+              whether they sign in. */}
+          <Route path="/shared/:token" element={<SharedDocumentPage />} />
           <Route path="/classes" element={<ClassesPage />} />
           <Route path="/classes/:classId" element={<ClassPage />} />
           <Route

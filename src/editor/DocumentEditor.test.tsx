@@ -112,9 +112,13 @@ describe('DocumentEditor', () => {
     it('exposes a single tab stop, so Tab does not walk every button', () => {
       renderToolbar()
 
-      const tabbable = screen
-        .getAllByRole('button')
-        .filter((button) => button.tabIndex === 0)
+      // Scoped to the toolbar: the editor also renders controls outside it
+      // (the view-mode bubble), which are their own tab stops by design. The
+      // invariant being asserted is about the toolbar's roving tabindex.
+      const toolbar = screen.getByRole('toolbar', { name: 'Text formatting' })
+      const tabbable = Array.from(toolbar.querySelectorAll('button')).filter(
+        (button) => button.tabIndex === 0,
+      )
 
       expect(tabbable).toHaveLength(1)
     })
