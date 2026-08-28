@@ -14,6 +14,7 @@ export default function SignUpPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [confirmationSentTo, setConfirmationSentTo] = useState<string | null>(null)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -26,7 +27,13 @@ export default function SignUpPage() {
 
     setSubmitting(true)
     try {
-      await signUp(email, password, displayName.trim())
+      const { needsEmailConfirmation } = await signUp(email, password, displayName.trim())
+
+      if (needsEmailConfirmation) {
+        setConfirmationSentTo(email)
+        return
+      }
+
       navigate('/classes', { replace: true })
     } catch (caught) {
       console.error('[SignUpPage] sign-up failed:', caught)
@@ -34,6 +41,30 @@ export default function SignUpPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (confirmationSentTo) {
+    return (
+      <AuthLayout
+        title="Check your email"
+        subtitle={`We sent a confirmation link to ${confirmationSentTo}.`}
+        footer={
+          <Link to="/login" className="text-accent hover:underline">
+            Back to sign in
+          </Link>
+        }
+      >
+        <div className="rounded border border-line bg-surface px-4 py-3">
+          <p className="text-sm text-ink-muted">
+            Click the link in that email to activate your account, then sign in. You
+            won&rsquo;t be able to sign in until it&rsquo;s confirmed.
+          </p>
+          <p className="mt-3 text-sm text-ink-muted">
+            Nothing there? Check your spam folder.
+          </p>
+        </div>
+      </AuthLayout>
+    )
   }
 
   return (

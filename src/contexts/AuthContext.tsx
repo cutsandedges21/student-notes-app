@@ -19,7 +19,15 @@ type AuthState = {
   /** Set once after guest work is copied into the account. */
   migration: { classes: number; documents: number } | null
   dismissMigration: () => void
-  signUp: (email: string, password: string, displayName: string) => Promise<void>
+  /**
+   * Resolves with `needsEmailConfirmation: true` when Supabase created the
+   * account but withheld a session pending email verification.
+   */
+  signUp: (
+    email: string,
+    password: string,
+    displayName: string,
+  ) => Promise<{ needsEmailConfirmation: boolean }>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   requestPasswordReset: (email: string) => Promise<void>
@@ -108,13 +116,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dismissMigration: () => setMigration(null),
 
       signUp: async (email, password, displayName) => {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           // Read by the handle_new_user trigger to populate profiles.display_name.
           options: { data: { display_name: displayName } },
         })
         if (error) throw error
+
+        // When "Confirm email" is enabled, Supabase returns a user but NO
+        // session -- the account exists yet cannot sign in until the emailed
+        // link is clicked. Navigating to the app here would drop the user into
+        // a signed-out view with no explanation, which is exactly how the
+        // confirmation requirement gets mistaken for a broken login.
+        return { needsEmailConfirmation: Boolean(data.user) && !data.session }
       },
 
       signIn: async (email, password) => {
