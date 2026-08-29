@@ -31,11 +31,9 @@ export default function App() {
           <Route path="/shared/:token" element={<SharedDocumentPage />} />
           <Route path="/upgrade" element={<UpgradePage />} />
           <Route path="/classes" element={<ClassesPage />} />
-          <Route path="/classes/:classId" element={<ClassPage />} />
-          <Route
-            path="/classes/:classId/documents/:documentId"
-            element={<EditorPage />}
-          />
+          <Route path="/classes/:classSlug" element={<ClassPage />} />
+          {/* Readable, and one segment shorter: /classes/biology-101/lecture-5 */}
+          <Route path="/classes/:classSlug/:noteSlug" element={<EditorPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

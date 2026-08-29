@@ -156,7 +156,7 @@ export function DocsTitleBar({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Nudged down so the title sits on the icon's vertical centre;
             the icon is taller than this row and spans the menus below. */}
-        <div className="mt-[11px] flex min-w-0 items-center gap-1">
+        <div className="mt-[15px] flex min-w-0 items-center gap-1">
           <label htmlFor="doc-title" className="sr-only">
             Note title
           </label>
@@ -344,9 +344,14 @@ export function DocsTitleBar({
         which is offset from the toolbar's by the width of the document icon
         and the controls on the right -- close enough to look like a mistake.
       */}
-      {/* Offset by the docked AI panel so the menus centre on the document,
-          matching the toolbar below them. */}
-      <div className="flex min-w-0 items-center justify-center overflow-x-auto lg:pl-[var(--ai-panel-w)]">
+      {/*
+        Docked left, on the same line as the document-actions pill in the
+        toolbar below. The pill sits at --chrome-gutter from the window edge;
+        this wrapper is already inset by the row's own px-3, so it only has to
+        add the difference. Below `lg` the pill loses its offset and both land
+        on that px-3, which is why the padding is scoped to `lg`.
+      */}
+      <div className="flex min-w-0 items-center lg:pl-[calc(var(--chrome-gutter)-0.75rem)]">
         {menubar}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import type { JSONContent } from '@tiptap/react'
 import { extractPlainText } from '../lib/tiptap'
+import { uniqueSlug } from '../lib/slug'
 import type {
   ClassRow,
   ClassWithCount,
@@ -79,10 +80,19 @@ export function guestFetchClass(classId: string): ClassRow | null {
   return read<ClassRow>(CLASSES_KEY).find((row) => row.id === classId) ?? null
 }
 
+export function guestClassSlugs(): string[] {
+  return read<ClassRow>(CLASSES_KEY).map((row) => row.slug)
+}
+
+export function guestFetchClassBySlug(slug: string): ClassRow | null {
+  return read<ClassRow>(CLASSES_KEY).find((row) => row.slug === slug) ?? null
+}
+
 export function guestCreateClass(input: ClassInput): ClassRow {
   const timestamp = now()
   const row: ClassRow = {
     ...input,
+    slug: uniqueSlug(input.name, guestClassSlugs()),
     id: newId(),
     user_id: GUEST_USER_ID,
     created_at: timestamp,
@@ -98,7 +108,21 @@ export function guestUpdateClass(classId: string, patch: Partial<ClassInput>): C
   const index = classes.findIndex((row) => row.id === classId)
   if (index === -1) return null
 
-  const updated: ClassRow = { ...classes[index], ...patch, updated_at: now() }
+  const updated: ClassRow = {
+    ...classes[index],
+    ...patch,
+    // Renaming re-slugs, matching the signed-in path.
+    ...(patch.name
+      ? {
+          slug: uniqueSlug(
+            patch.name,
+            classes.map((row) => row.slug),
+            classes[index].slug,
+          ),
+        }
+      : {}),
+    updated_at: now(),
+  }
   classes[index] = updated
   write(CLASSES_KEY, classes)
   return updated
@@ -124,10 +148,11 @@ export function guestFetchDocuments(classId: string): DocumentListItem[] {
   return read<DocumentRow>(DOCUMENTS_KEY)
     .filter((row) => row.class_id === classId)
     .sort(byNewestEdit)
-    .map(({ id, class_id, title, created_at, updated_at }) => ({
+    .map(({ id, class_id, title, slug, created_at, updated_at }) => ({
       id,
       class_id,
       title,
+      slug,
       created_at,
       updated_at,
     }))
@@ -137,6 +162,23 @@ export function guestFetchDocument(documentId: string): DocumentRow | null {
   return read<DocumentRow>(DOCUMENTS_KEY).find((row) => row.id === documentId) ?? null
 }
 
+export function guestDocumentSlugs(classId: string): string[] {
+  return read<DocumentRow>(DOCUMENTS_KEY)
+    .filter((row) => row.class_id === classId)
+    .map((row) => row.slug)
+}
+
+export function guestFetchDocumentBySlug(
+  classId: string,
+  slug: string,
+): DocumentRow | null {
+  return (
+    read<DocumentRow>(DOCUMENTS_KEY).find(
+      (row) => row.class_id === classId && row.slug === slug,
+    ) ?? null
+  )
+}
+
 export function guestCreateDocument(classId: string, title = ''): DocumentRow {
   const timestamp = now()
   const row: DocumentRow = {
@@ -144,6 +186,7 @@ export function guestCreateDocument(classId: string, title = ''): DocumentRow {
     class_id: classId,
     user_id: GUEST_USER_ID,
     title,
+    slug: uniqueSlug(title || 'untitled', guestDocumentSlugs(classId)),
     content: { type: 'doc', content: [] },
     content_text: '',
     version: 1,
@@ -173,9 +216,15 @@ export function guestSaveDocument(params: {
   if (documents[index].version !== expectedVersion) return { status: 'stale' }
 
   const version = expectedVersion + 1
+  const classId = documents[index].class_id
   documents[index] = {
     ...documents[index],
     title,
+    slug: uniqueSlug(
+      title || 'untitled',
+      documents.filter((row) => row.class_id === classId).map((row) => row.slug),
+      documents[index].slug,
+    ),
     content,
     content_text: extractPlainText(content),
     version,

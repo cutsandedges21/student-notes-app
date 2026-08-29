@@ -16,8 +16,14 @@ import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { createAutosaveScheduler } from '../lib/autosave'
-import { fetchClass } from '../services/classes'
-import { createDocument, deleteDocument, fetchDocument, saveDocument } from '../services/documents'
+import { fetchClassBySlug } from '../services/classes'
+import {
+  createDocument,
+  deleteDocument,
+  fetchDocument,
+  fetchDocumentBySlug,
+  saveDocument,
+} from '../services/documents'
 import type { ClassRow, DocumentRow } from '../types/database'
 
 const AUTOSAVE_DELAY_MS = 1000
@@ -28,7 +34,7 @@ interface DraftPayload {
 }
 
 export default function EditorPage() {
-  const { classId, documentId } = useParams<{ classId: string; documentId: string }>()
+  const { classSlug, noteSlug } = useParams<{ classSlug: string; noteSlug: string }>()
   const { user } = useAuth()
   const online = useOnlineStatus()
 
@@ -64,6 +70,12 @@ export default function EditorPage() {
   // advances on each successful write. Held in a ref so the scheduler always
   // reads the current value rather than a captured stale one.
   const versionRef = useRef<number>(1)
+  // Refs, not state: the autosave scheduler closes over `persist`, and these
+  // must reflect the current row rather than the render that created it.
+  const documentIdRef = useRef<string | null>(null)
+  const classIdRef = useRef<string | null>(null)
+  const classSlugRef = useRef<string | undefined>(classSlug)
+  const slugRef = useRef<string | undefined>(noteSlug)
 
   // The latest editor content, so a title-only edit can still send the current
   // body. Declared before `persist` because the stale-save branch has to reset
@@ -72,6 +84,7 @@ export default function EditorPage() {
 
   const persist = useCallback(
     async ({ title: nextTitle, content }: DraftPayload) => {
+      const documentId = documentIdRef.current
       if (!documentId) return
       setSaveState('saving')
       try {
@@ -80,6 +93,7 @@ export default function EditorPage() {
           title: nextTitle,
           content,
           expectedVersion: versionRef.current,
+          classId: classIdRef.current ?? undefined,
         })
 
         if (result.status === 'stale') {
@@ -101,12 +115,21 @@ export default function EditorPage() {
 
         versionRef.current = result.version
         setSaveState('saved')
+
+        // Retitling re-slugs the row, so the address bar has to follow or a
+        // reload would land on a slug that no longer exists. Replace rather
+        // than push: this is the same note, not a new entry in history.
+        const saved = await fetchDocument(userId, documentId)
+        if (saved && saved.slug !== slugRef.current) {
+          slugRef.current = saved.slug
+          navigate(`/classes/${classSlugRef.current}/${saved.slug}`, { replace: true })
+        }
       } catch (caught) {
         console.error('[EditorPage] save failed:', caught)
         setSaveState('error')
       }
     },
-    [documentId, userId],
+    [userId, navigate],
   )
 
   const scheduler = useMemo(
@@ -115,18 +138,23 @@ export default function EditorPage() {
   )
 
   useEffect(() => {
-    if (!documentId || !classId) return
+    if (!classSlug || !noteSlug) return
     let cancelled = false
 
     void (async () => {
       try {
-        const [classRow, docRow] = await Promise.all([
-          fetchClass(userId, classId),
-          fetchDocument(userId, documentId),
-        ])
+        // Class first: the note's slug is only unique inside it.
+        const classRow = await fetchClassBySlug(userId, classSlug)
+        const docRow = classRow
+          ? await fetchDocumentBySlug(userId, classRow.id, noteSlug)
+          : null
         if (cancelled) return
         setKlass(classRow)
         setDoc(docRow)
+        documentIdRef.current = docRow?.id ?? null
+        classIdRef.current = classRow?.id ?? null
+        classSlugRef.current = classRow?.slug ?? classSlug
+        slugRef.current = docRow?.slug
         setLoaded(true)
         setTitle(docRow?.title ?? '')
         versionRef.current = docRow?.version ?? 1
@@ -139,7 +167,7 @@ export default function EditorPage() {
     return () => {
       cancelled = true
     }
-  }, [classId, documentId, userId])
+  }, [classSlug, noteSlug, userId])
 
   // Save anything pending when leaving the page.
   useEffect(() => () => void scheduler.flush(), [scheduler])
@@ -170,20 +198,20 @@ export default function EditorPage() {
   }
 
   async function handleNewNote() {
-    if (!classId) return
+    if (!klass) return
     // Flush first: navigating away otherwise drops anything still debounced.
     await scheduler.flush()
-    const created = await createDocument(userId, classId)
-    navigate(`/classes/${classId}/documents/${created.id}`)
+    const created = await createDocument(userId, klass.id)
+    navigate(`/classes/${klass.slug}/${created.slug}`)
   }
 
   async function handleDeleteNote() {
-    if (!documentId || !classId) return
+    if (!doc || !klass) return
     if (!window.confirm(`Delete "${title || 'Untitled note'}"? This cannot be undone.`)) return
 
     scheduler.cancel()
-    await deleteDocument(userId, documentId)
-    navigate(`/classes/${classId}`, { replace: true })
+    await deleteDocument(userId, doc.id)
+    navigate(`/classes/${klass.slug}`, { replace: true })
   }
 
   function focusTitle() {
@@ -251,7 +279,7 @@ export default function EditorPage() {
             signed in to.
           </p>
           <Link
-            to={classId ? `/classes/${classId}` : '/classes'}
+            to={classSlug ? `/classes/${classSlug}` : '/classes'}
             className="mt-6 inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
           >
             Back to my notes
@@ -274,7 +302,7 @@ export default function EditorPage() {
             title={title}
             onTitleChange={handleTitleChange}
             saveState={displayState}
-            backTo={`/classes/${classId}`}
+            backTo={`/classes/${klass?.slug ?? ''}`}
             backLabel={klass ? `Back to ${klass.name}` : 'Back to class'}
             aiOpen={sidebarOpen}
             onToggleAi={() => setSidebarOpen((open) => !open)}
@@ -313,7 +341,7 @@ export default function EditorPage() {
           sidebar={
             <AiSidebar
               documentId={doc.id}
-              classId={classId!}
+              classId={doc.class_id}
               selection={selection}
               pendingMode={pendingMode}
               onPendingHandled={() => setPendingMode(null)}
@@ -326,7 +354,7 @@ export default function EditorPage() {
       <AiDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
         <AiSidebar
           documentId={doc.id}
-          classId={classId!}
+          classId={doc.class_id}
           selection={selection}
           pendingMode={pendingMode}
           onPendingHandled={() => setPendingMode(null)}

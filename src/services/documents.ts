@@ -1,11 +1,13 @@
 import { supabase } from '../lib/supabase'
 import { extractPlainText } from '../lib/tiptap'
+import { uniqueSlug } from '../lib/slug'
 import type { JSONContent } from '@tiptap/react'
 import type { DocumentListItem, DocumentRow } from '../types/database'
 import {
   guestCreateDocument,
   guestDeleteDocument,
   guestFetchDocument,
+  guestFetchDocumentBySlug,
   guestFetchDocuments,
   guestSaveDocument,
 } from './guestStore'
@@ -39,7 +41,7 @@ export async function fetchDocuments(
 
   const { data, error } = await supabase
     .from('documents')
-    .select('id, class_id, title, created_at, updated_at')
+    .select('id, class_id, title, slug, created_at, updated_at')
     .eq('class_id', classId)
     .order('updated_at', { ascending: false })
 
@@ -63,6 +65,35 @@ export async function fetchDocument(
   return data as DocumentRow | null
 }
 
+/** Slugs already used inside this class. */
+async function takenDocumentSlugs(classId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('slug')
+    .eq('class_id', classId)
+
+  if (error) throw error
+  return (data ?? []).map((row) => row.slug as string)
+}
+
+export async function fetchDocumentBySlug(
+  userId: string | null,
+  classId: string,
+  slug: string,
+): Promise<DocumentRow | null> {
+  if (!userId) return guestFetchDocumentBySlug(classId, slug)
+
+  const { data, error } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('class_id', classId)
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (error) throw error
+  return data as DocumentRow | null
+}
+
 export async function createDocument(
   userId: string | null,
   classId: string,
@@ -70,12 +101,15 @@ export async function createDocument(
 ): Promise<DocumentRow> {
   if (!userId) return guestCreateDocument(classId, title)
 
+  const slug = uniqueSlug(title || 'untitled', await takenDocumentSlugs(classId))
+
   const { data, error } = await supabase
     .from('documents')
     .insert({
       user_id: userId,
       class_id: classId,
       title,
+      slug,
       content: EMPTY_DOC,
       content_text: '',
     })
@@ -100,16 +134,32 @@ export async function saveDocument(
     title: string
     content: JSONContent
     expectedVersion: number
+    /** Supply to keep the slug in step with the title. */
+    classId?: string
   },
 ): Promise<SaveResult> {
   if (!userId) return guestSaveDocument(params)
 
-  const { documentId, title, content, expectedVersion } = params
+  const { documentId, title, content, expectedVersion, classId } = params
+
+  // Retitling re-slugs so the URL keeps matching the note. Only done when the
+  // caller passes classId, since the new slug has to be unique within it.
+  let slugPatch: Record<string, string> = {}
+  if (classId) {
+    const current = await fetchDocument(userId, documentId)
+    const nextSlug = uniqueSlug(
+      title || 'untitled',
+      await takenDocumentSlugs(classId),
+      current?.slug,
+    )
+    if (nextSlug !== current?.slug) slugPatch = { slug: nextSlug }
+  }
 
   const { data, error } = await supabase
     .from('documents')
     .update({
       title,
+      ...slugPatch,
       content,
       content_text: extractPlainText(content),
       version: expectedVersion + 1,

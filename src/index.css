@@ -10,6 +10,13 @@
      * the chrome follows.
      */
     --ai-panel-w: 312px;
+
+    /*
+     * Left edge shared by the menu row and the toolbar's document-actions
+     * pill directly beneath it. Both are docked to this line, so it lives in
+     * one place rather than being written out twice and drifting apart.
+     */
+    --chrome-gutter: 18px;
   }
 
   html,

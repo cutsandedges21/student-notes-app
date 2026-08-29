@@ -113,8 +113,8 @@ export default function SharedDocumentPage() {
     if (!user || !shared) return
     setCopying(true)
     try {
-      const { classId, documentId } = await copySharedDocument(user.id, shared)
-      navigate(`/classes/${classId}/documents/${documentId}`)
+      const { classSlug, noteSlug } = await copySharedDocument(user.id, shared)
+      navigate(`/classes/${classSlug}/${noteSlug}`)
     } catch (caught) {
       console.error('[SharedDocumentPage] copy failed:', caught)
       setCopying(false)
@@ -200,7 +200,7 @@ export default function SharedDocumentPage() {
 
           {isOwner && (
             <Link
-              to={`/classes/${shared.class_id}/documents/${shared.id}`}
+              to={`/classes/${shared.class_slug}/${shared.slug}`}
               className="rounded-full bg-docs-chip px-4 py-2 font-ui text-sm font-medium text-docs-chip-text transition-colors hover:bg-docs-chip-hover"
             >
               Open in my notes

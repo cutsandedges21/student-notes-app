@@ -70,7 +70,7 @@ export default function ClassesPage() {
             {classes.map((item) => (
               <li key={item.id}>
                 <Link
-                  to={`/classes/${item.id}`}
+                  to={`/classes/${item.slug}`}
                   className="block rounded border border-line bg-surface p-5 transition-colors hover:border-line-strong hover:bg-surface-hover"
                 >
                   <h2 className="font-medium text-ink">{item.name}</h2>

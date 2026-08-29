@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AppHeader } from '../components/AppHeader'
 import { Button } from '../components/ui/Button'
 import { useAuth } from '../contexts/AuthContext'
-import { fetchClass, updateClass } from '../services/classes'
+import { fetchClassBySlug, updateClass } from '../services/classes'
 import { createDocument, fetchDocuments } from '../services/documents'
 import { formatRelativeTime } from '../lib/formatDate'
 import { MenuButton } from '../components/ui/MenuButton'
@@ -13,7 +13,7 @@ import { deleteDocument } from '../services/documents'
 import type { ClassRow, DocumentListItem } from '../types/database'
 
 export default function ClassPage() {
-  const { classId } = useParams<{ classId: string }>()
+  const { classSlug } = useParams<{ classSlug: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
   const [klass, setKlass] = useState<ClassRow | null>(null)
@@ -25,12 +25,12 @@ export default function ClassPage() {
   const userId = user?.id ?? null
 
   const load = useCallback(async () => {
-    if (!classId) return
+    if (!classSlug) return
     try {
-      const [classRow, docs] = await Promise.all([
-        fetchClass(userId, classId),
-        fetchDocuments(userId, classId),
-      ])
+      // The slug identifies the class; everything downstream still works from
+      // its id, so a rename cannot strand in-flight requests.
+      const classRow = await fetchClassBySlug(userId, classSlug)
+      const docs = classRow ? await fetchDocuments(userId, classRow.id) : []
       setKlass(classRow)
       setProfessor(classRow?.professor ?? '')
       setDocuments(docs)
@@ -39,22 +39,22 @@ export default function ClassPage() {
     } finally {
       setLoading(false)
     }
-  }, [classId, userId])
+  }, [classSlug, userId])
 
   useEffect(() => {
     void load()
   }, [load])
 
   async function handleNewNote() {
-    if (!classId) return
-    const doc = await createDocument(userId, classId)
-    navigate(`/classes/${classId}/documents/${doc.id}`)
+    if (!klass) return
+    const doc = await createDocument(userId, klass.id)
+    navigate(`/classes/${klass.slug}/${doc.slug}`)
   }
 
   async function handleProfessorBlur() {
-    if (!classId || !klass || professor === klass.professor) return
+    if (!klass || professor === klass.professor) return
     try {
-      await updateClass(userId, classId, { professor: professor.trim() })
+      await updateClass(userId, klass.id, { professor: professor.trim() })
       setKlass({ ...klass, professor: professor.trim() })
     } catch (caught) {
       console.error('[ClassPage] failed to update professor:', caught)
@@ -63,20 +63,20 @@ export default function ClassPage() {
   }
 
   async function handleRename(name: string) {
-    if (!classId || !klass) return
-    await updateClass(userId, classId, { name })
+    if (!klass) return
+    await updateClass(userId, klass.id, { name })
     setKlass({ ...klass, name })
   }
 
   async function handleDeleteClass() {
-    if (!classId || !klass) return
+    if (!klass) return
     const confirmed = window.confirm(
       `Delete "${klass.name}" and all of its notes? This cannot be undone.`,
     )
     if (!confirmed) return
 
     try {
-      await deleteClass(userId, classId)
+      await deleteClass(userId, klass.id)
       navigate('/classes', { replace: true })
     } catch (caught) {
       console.error('[ClassPage] failed to delete class:', caught)
@@ -165,7 +165,7 @@ export default function ClassPage() {
             {documents.map((doc) => (
               <li key={doc.id} className="flex items-center gap-2">
                 <Link
-                  to={`/classes/${klass.id}/documents/${doc.id}`}
+                  to={`/classes/${klass.slug}/${doc.slug}`}
                   className="flex flex-1 items-center justify-between px-1 py-3 transition-colors hover:bg-surface-hover"
                 >
                   <span className="text-ink">{doc.title || 'Untitled note'}</span>

@@ -1,10 +1,12 @@
 import { supabase } from '../lib/supabase'
+import { uniqueSlug } from '../lib/slug'
 import type { ClassRow, ClassWithCount, CourseLevel } from '../types/database'
 import {
   guestCreateClass,
   guestDeleteClass,
   guestFetchClass,
   guestFetchClasses,
+  guestFetchClassBySlug,
   guestUpdateClass,
 } from './guestStore'
 
@@ -56,20 +58,50 @@ export async function fetchClass(
   return data as ClassRow | null
 }
 
+/** Slugs already in use by this user, so a new one can avoid them. */
+async function takenClassSlugs(userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('classes')
+    .select('slug')
+    .eq('user_id', userId)
+
+  if (error) throw error
+  return (data ?? []).map((row) => row.slug as string)
+}
+
 export async function createClass(
   userId: string | null,
   input: ClassInput,
 ): Promise<ClassRow> {
   if (!userId) return guestCreateClass(input)
 
+  const slug = uniqueSlug(input.name, await takenClassSlugs(userId))
+
   const { data, error } = await supabase
     .from('classes')
-    .insert({ ...input, user_id: userId })
+    .insert({ ...input, slug, user_id: userId })
     .select()
     .single()
 
   if (error) throw error
   return data as ClassRow
+}
+
+export async function fetchClassBySlug(
+  userId: string | null,
+  slug: string,
+): Promise<ClassRow | null> {
+  if (!userId) return guestFetchClassBySlug(slug)
+
+  const { data, error } = await supabase
+    .from('classes')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (error) throw error
+  return data as ClassRow | null
 }
 
 export async function updateClass(
@@ -79,9 +111,20 @@ export async function updateClass(
 ): Promise<ClassRow | null> {
   if (!userId) return guestUpdateClass(classId, patch)
 
+  // Renaming re-slugs, so the URL keeps matching the name on screen. Share
+  // links are unaffected: they are keyed on a token, not on the slug.
+  let update: Record<string, unknown> = { ...patch }
+  if (patch.name) {
+    const current = await fetchClass(userId, classId)
+    update = {
+      ...update,
+      slug: uniqueSlug(patch.name, await takenClassSlugs(userId), current?.slug),
+    }
+  }
+
   const { data, error } = await supabase
     .from('classes')
-    .update(patch)
+    .update(update)
     .eq('id', classId)
     .select()
     .single()

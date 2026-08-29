@@ -10,6 +10,8 @@ export interface ClassRow {
   id: string
   user_id: string
   name: string
+  /** URL segment, unique per user. Links only; rows are keyed by id. */
+  slug: string
   course_code: string
   professor: string
   semester: string
@@ -28,6 +30,8 @@ export interface DocumentRow {
   class_id: string
   user_id: string
   title: string
+  /** URL segment, unique within its class. */
+  slug: string
   /** Tiptap JSON. Typed loosely here; the editor owns the shape. */
   content: unknown
   content_text: string
@@ -40,5 +44,5 @@ export interface DocumentRow {
 /** Listing shape for the class page — excludes heavy content columns. */
 export type DocumentListItem = Pick<
   DocumentRow,
-  'id' | 'class_id' | 'title' | 'created_at' | 'updated_at'
+  'id' | 'class_id' | 'title' | 'slug' | 'created_at' | 'updated_at'
 >

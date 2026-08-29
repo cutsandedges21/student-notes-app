@@ -1,6 +1,8 @@
 import type { JSONContent } from '@tiptap/react'
 import { supabase } from '../lib/supabase'
 import { extractPlainText } from '../lib/tiptap'
+import { createClass } from './classes'
+import { createDocument, fetchDocument, saveDocument } from './documents'
 import type { SaveResult } from './documents'
 
 /**
@@ -35,6 +37,9 @@ export interface SharedDocument {
   id: string
   class_id: string
   class_name: string
+  /** Slugs of the copy's destination, so the page can link to it. */
+  class_slug: string
+  slug: string
   title: string
   content: unknown
   version: number
@@ -114,12 +119,12 @@ export async function saveSharedDocument(params: {
 export async function copySharedDocument(
   userId: string,
   shared: SharedDocument,
-): Promise<{ classId: string; documentId: string }> {
+): Promise<{ classSlug: string; noteSlug: string }> {
   const className = shared.class_name || 'Shared with me'
 
   const { data: existing, error: findError } = await supabase
     .from('classes')
-    .select('id')
+    .select('id, slug')
     .eq('user_id', userId)
     .eq('name', className)
     .maybeSingle()
@@ -127,33 +132,34 @@ export async function copySharedDocument(
   if (findError) throw findError
 
   let classId = existing?.id as string | undefined
+  let classSlug = existing?.slug as string | undefined
 
   if (!classId) {
-    const { data: created, error: createError } = await supabase
-      .from('classes')
-      .insert({ user_id: userId, name: className })
-      .select('id')
-      .single()
-
-    if (createError) throw createError
-    classId = created.id as string
+    const created = await createClass(userId, {
+      name: className,
+      course_code: '',
+      professor: '',
+      semester: '',
+      course_level: 'College',
+    })
+    classId = created.id
+    classSlug = created.slug
   }
 
   const content = shared.content as JSONContent
 
-  const { data: copy, error: copyError } = await supabase
-    .from('documents')
-    .insert({
-      user_id: userId,
-      class_id: classId,
-      title: shared.title ? `Copy of ${shared.title}` : 'Untitled copy',
-      content,
-      content_text: extractPlainText(content),
-    })
-    .select('id')
-    .single()
+  // Goes through the normal create+save path so the copy gets a slug and a
+  // content_text derived exactly as every other note's is.
+  const title = shared.title ? `Copy of ${shared.title}` : 'Untitled copy'
+  const copy = await createDocument(userId, classId!, title)
+  await saveDocument(userId, {
+    documentId: copy.id,
+    title,
+    content,
+    expectedVersion: copy.version,
+    classId: classId!,
+  })
 
-  if (copyError) throw copyError
-
-  return { classId: classId!, documentId: copy.id as string }
+  const saved = await fetchDocument(userId, copy.id)
+  return { classSlug: classSlug!, noteSlug: saved?.slug ?? copy.slug }
 }

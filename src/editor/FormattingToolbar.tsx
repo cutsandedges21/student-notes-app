@@ -425,7 +425,7 @@ export function FormattingToolbar({
       {/* Negative margin cancels the row's left padding for this cell only:
           the middle column stays centred on the document, while these
           document-level actions keep their place at the screen edge. */}
-      <div className="flex min-w-0 items-center justify-start lg:-ml-[calc(var(--ai-panel-w)+0.75rem)] lg:pl-[18px]">
+      <div className="flex min-w-0 items-center justify-start lg:-ml-[calc(var(--ai-panel-w)+0.75rem)] lg:pl-[var(--chrome-gutter)]">
         <div className="flex items-center gap-0.5 rounded-[18px] bg-docs-toolbar px-2 py-1">
           <ToolButton
             label="Undo"
