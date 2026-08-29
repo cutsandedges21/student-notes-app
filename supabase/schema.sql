@@ -255,6 +255,73 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ============================================================================
+-- Readable URLs
+-- ============================================================================
+-- Slugs are for links only; rows stay keyed by id everywhere internally.
+-- Unique per scope: a class slug within a user, a note slug within a class.
+-- ----------------------------------------------------------------------------
+
+alter table public.classes add column if not exists slug text;
+alter table public.documents add column if not exists slug text;
+
+-- Backfill existing rows. The expression mirrors the client's slugify for the
+-- latin case; anything that reduces to nothing becomes 'untitled', and repeats
+-- within a scope get a counter, matching uniqueSlug().
+with numbered as (
+  select
+    id,
+    case
+      when row_number() over (partition by user_id, base order by created_at) = 1
+        then base
+      else base || '-' ||
+           row_number() over (partition by user_id, base order by created_at)
+    end as new_slug
+  from (
+    select id, user_id, created_at,
+           coalesce(
+             nullif(trim(both '-' from regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g')), ''),
+             'untitled'
+           ) as base
+    from public.classes
+    where slug is null
+  ) s
+)
+update public.classes c set slug = n.new_slug from numbered n where n.id = c.id;
+
+with numbered as (
+  select
+    id,
+    case
+      when row_number() over (partition by class_id, base order by created_at) = 1
+        then base
+      else base || '-' ||
+           row_number() over (partition by class_id, base order by created_at)
+    end as new_slug
+  from (
+    select id, class_id, created_at,
+           coalesce(
+             nullif(trim(both '-' from regexp_replace(lower(title), '[^a-z0-9]+', '-', 'g')), ''),
+             'untitled'
+           ) as base
+    from public.documents
+    where slug is null
+  ) s
+)
+update public.documents d set slug = n.new_slug from numbered n where n.id = d.id;
+
+-- Any row still without a slug (e.g. inserted between the two statements)
+-- falls back to its id, which is unique by construction.
+update public.classes set slug = id::text where slug is null;
+update public.documents set slug = id::text where slug is null;
+
+alter table public.classes alter column slug set not null;
+alter table public.documents alter column slug set not null;
+
+create unique index if not exists classes_user_slug_idx on public.classes(user_id, slug);
+create unique index if not exists documents_class_slug_idx on public.documents(class_id, slug);
+
+
+-- ============================================================================
 -- Link sharing
 -- ============================================================================
 -- Sharing is token-based, NOT policy-based.
@@ -387,69 +454,3 @@ end;
 $$;
 
 grant execute on function public.delete_own_account() to authenticated;
-
--- ============================================================================
--- Readable URLs
--- ============================================================================
--- Slugs are for links only; rows stay keyed by id everywhere internally.
--- Unique per scope: a class slug within a user, a note slug within a class.
--- ----------------------------------------------------------------------------
-
-alter table public.classes add column if not exists slug text;
-alter table public.documents add column if not exists slug text;
-
--- Backfill existing rows. The expression mirrors the client's slugify for the
--- latin case; anything that reduces to nothing becomes 'untitled', and repeats
--- within a scope get a counter, matching uniqueSlug().
-with numbered as (
-  select
-    id,
-    case
-      when row_number() over (partition by user_id, base order by created_at) = 1
-        then base
-      else base || '-' ||
-           row_number() over (partition by user_id, base order by created_at)
-    end as new_slug
-  from (
-    select id, user_id, created_at,
-           coalesce(
-             nullif(trim(both '-' from regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g')), ''),
-             'untitled'
-           ) as base
-    from public.classes
-    where slug is null
-  ) s
-)
-update public.classes c set slug = n.new_slug from numbered n where n.id = c.id;
-
-with numbered as (
-  select
-    id,
-    case
-      when row_number() over (partition by class_id, base order by created_at) = 1
-        then base
-      else base || '-' ||
-           row_number() over (partition by class_id, base order by created_at)
-    end as new_slug
-  from (
-    select id, class_id, created_at,
-           coalesce(
-             nullif(trim(both '-' from regexp_replace(lower(title), '[^a-z0-9]+', '-', 'g')), ''),
-             'untitled'
-           ) as base
-    from public.documents
-    where slug is null
-  ) s
-)
-update public.documents d set slug = n.new_slug from numbered n where n.id = d.id;
-
--- Any row still without a slug (e.g. inserted between the two statements)
--- falls back to its id, which is unique by construction.
-update public.classes set slug = id::text where slug is null;
-update public.documents set slug = id::text where slug is null;
-
-alter table public.classes alter column slug set not null;
-alter table public.documents alter column slug set not null;
-
-create unique index if not exists classes_user_slug_idx on public.classes(user_id, slug);
-create unique index if not exists documents_class_slug_idx on public.documents(class_id, slug);
