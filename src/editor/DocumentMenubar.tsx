@@ -4,15 +4,14 @@ import type { Editor } from '@tiptap/react'
 import { cn } from '../lib/cn'
 
 /**
- * The Google Docs menu row: File, Edit, View, Insert, Format, Tools,
- * Extensions, Help.
+ * The menu row: File, Edit, View, Insert, Format, Tools.
  *
  * Every item here performs a real action. Menus that merely look the part are
  * worse than no menus: they advertise capability the app doesn't have, and a
  * student who clicks "Insert > Table" and gets nothing learns to distrust the
- * whole bar. Where Docs offers something we don't have, the slot is filled
- * with our nearest equivalent rather than a dead entry -- Extensions opens the
- * AI panel, Tools counts words.
+ * whole bar. Docs' Extensions and Help menus are deliberately absent for the
+ * same reason -- the AI panel is reachable from its own button and
+ * Ctrl+Shift+A, so a menu holding one shortcut to it earned no space.
  */
 
 interface MenuAction {
@@ -140,8 +139,6 @@ interface DocumentMenubarProps {
   onNewNote: () => void
   onRename: () => void
   onDelete: () => void
-  /** Opens the AI panel, which is what Extensions points at. */
-  onOpenAi: () => void
   showRuler: boolean
   onToggleRuler: () => void
   compact: boolean
@@ -153,7 +150,6 @@ export function DocumentMenubar({
   onNewNote,
   onRename,
   onDelete,
-  onOpenAi,
   showRuler,
   onToggleRuler,
   compact,
@@ -326,41 +322,6 @@ export function DocumentMenubar({
             const on = editor.view.dom.getAttribute('spellcheck') !== 'false'
             editor.view.dom.setAttribute('spellcheck', String(!on))
           },
-        },
-      ],
-    },
-    {
-      label: 'Extensions',
-      items: [
-        { label: 'AI assistant', shortcut: 'Ctrl+Shift+A', onSelect: onOpenAi },
-      ],
-    },
-    {
-      label: 'Help',
-      items: [
-        {
-          label: 'Keyboard shortcuts',
-          onSelect: () =>
-            window.alert(
-              [
-                'Ctrl+B  Bold',
-                'Ctrl+I  Italic',
-                'Ctrl+U  Underline',
-                'Ctrl+K  Insert link',
-                'Ctrl+Z  Undo',
-                'Ctrl+Shift+Z  Redo',
-                'Ctrl+P  Print',
-                'Ctrl+Shift+A  AI assistant',
-              ].join('\n'),
-            ),
-        },
-        {
-          label: 'About Margin',
-          separatorBefore: true,
-          onSelect: () =>
-            window.alert(
-              'Margin — notes for class.\nYour work saves automatically, signed in or not.',
-            ),
         },
       ],
     },

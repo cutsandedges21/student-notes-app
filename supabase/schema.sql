@@ -9,6 +9,11 @@
 --         conversations, messages
 -- All tables RLS-enabled, scoped to auth.uid().
 -- profiles row is auto-created via trigger on auth.users insert.
+--
+-- Functions whose return shape may change are dropped before being recreated:
+-- `create or replace` cannot alter a return type, so re-running would fail
+-- otherwise. touch_updated_at and handle_new_user are deliberately NOT dropped
+-- -- triggers depend on them, and dropping would take those triggers with it.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -282,6 +287,7 @@ create unique index if not exists documents_share_token_idx
 -- Returns nothing when the token is unknown or sharing is off, so a wrong
 -- guess is indistinguishable from a private document.
 -- ----------------------------------------------------------------------------
+drop function if exists public.get_shared_document(uuid);
 create or replace function public.get_shared_document(p_token uuid)
 returns table (
   id uuid,
@@ -317,6 +323,7 @@ grant execute on function public.get_shared_document(uuid) to anon, authenticate
 -- contract as the owner's own save path -- a stale version returns null rather
 -- than overwriting newer content.
 -- ----------------------------------------------------------------------------
+drop function if exists public.update_shared_document(uuid, text, jsonb, text, integer);
 create or replace function public.update_shared_document(
   p_token uuid,
   p_title text,
@@ -363,6 +370,7 @@ grant execute on function public.update_shared_document(uuid, text, jsonb, text,
 --
 -- Irreversible: there is no soft-delete or grace period behind this.
 -- ----------------------------------------------------------------------------
+drop function if exists public.delete_own_account();
 create or replace function public.delete_own_account()
 returns void
 language plpgsql

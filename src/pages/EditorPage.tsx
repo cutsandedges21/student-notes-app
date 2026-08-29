@@ -312,7 +312,6 @@ export default function EditorPage() {
                 onNewNote={() => void handleNewNote()}
                 onRename={focusTitle}
                 onDelete={() => void handleDeleteNote()}
-                onOpenAi={() => setSidebarOpen(true)}
                 showRuler={showRuler}
                 onToggleRuler={() => setShowRuler((on) => !on)}
                 compact={compact}
