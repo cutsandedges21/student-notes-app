@@ -199,10 +199,11 @@ export function DocumentEditor({
               events so it never blocks clicks on the document beneath it.
             */}
             <div className="pointer-events-none sticky top-[38px] z-20 -mt-2 mb-2 hidden justify-end lg:flex">
-              <div className="pointer-events-auto rounded-full border border-line bg-surface px-1 py-1 shadow-pill">
+              <div className="pointer-events-auto rounded-full border border-line bg-surface px-1 py-1 shadow-pill transition-colors hover:bg-docs-chrome-hover">
                 <ToolbarDropdown
                   label="Mode"
                   width={104}
+                  triggerClassName="hover:bg-transparent"
                   trigger={
                     <span className="flex items-center gap-2">
                       <Pencil size={16} className="text-docs-icon" />

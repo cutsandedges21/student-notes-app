@@ -17,6 +17,11 @@ interface ToolbarDropdownProps {
    * opens the menu, where the icon lives in the button beside it.
    */
   chevronOnly?: boolean
+  /**
+   * Overrides on the trigger. Used where a surrounding pill owns the hover
+   * state, so the trigger must not tint on its own and darken twice.
+   */
+  triggerClassName?: string
   children: (close: () => void) => ReactNode
 }
 
@@ -40,6 +45,7 @@ export function ToolbarDropdown({
   width,
   active,
   chevronOnly,
+  triggerClassName,
   children,
 }: ToolbarDropdownProps) {
   const [open, setOpen] = useState(false)
@@ -116,6 +122,7 @@ export function ToolbarDropdown({
           'transition-colors hover:bg-docs-hover',
           active ? 'bg-docs-active text-docs-active-icon' : 'text-docs-text',
           open && 'bg-docs-hover',
+          triggerClassName,
         )}
       >
         <span className="flex min-w-0 items-center truncate">{trigger}</span>
