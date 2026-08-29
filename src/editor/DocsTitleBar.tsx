@@ -154,7 +154,9 @@ export function DocsTitleBar({
       </Link>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-w-0 items-center gap-1">
+        {/* Nudged down so the title sits on the icon's vertical centre;
+            the icon is taller than this row and spans the menus below. */}
+        <div className="mt-[11px] flex min-w-0 items-center gap-1">
           <label htmlFor="doc-title" className="sr-only">
             Note title
           </label>
