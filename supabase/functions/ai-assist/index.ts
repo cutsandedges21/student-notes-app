@@ -12,7 +12,10 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { AI_PROMPT_VERSION, SYSTEM_PROMPT } from './prompts/studentAssistant.ts'
 import { buildAIContext, type ConversationTurn } from './context.ts'
 
-const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.0-flash'
+// Overridable, because Google retires models on its own schedule: when this
+// default dies the fix is a secret, not a redeploy. `gemini-2.0-flash` was the
+// previous default and now returns 404 from the API.
+const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.6-flash'
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
 const REQUEST_TIMEOUT_MS = 30_000
 
@@ -215,7 +218,14 @@ Deno.serve(async (req: Request) => {
     }
 
     const payload = await geminiResponse.json()
-    const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text
+
+    // The first part is not reliably the answer: reasoning models put a
+    // thought signature in its own part and the JSON in a later one. Take the
+    // first part that actually carries text.
+    const parts: unknown[] = payload?.candidates?.[0]?.content?.parts ?? []
+    const text = parts
+      .map((part) => (part as { text?: unknown })?.text)
+      .find((value): value is string => typeof value === 'string')
 
     if (typeof text !== 'string') {
       console.error('[ai-assist] unexpected gemini payload', JSON.stringify(payload).slice(0, 800))
