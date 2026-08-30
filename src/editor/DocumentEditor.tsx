@@ -19,6 +19,48 @@ import { cn } from '../lib/cn'
 
 const DEFAULT_MARGIN = 96
 
+const EMPTY_ZONE: JSONContent = { type: 'doc', content: [] }
+
+/**
+ * The static copy of a header or footer drawn on pages 2..n.
+ *
+ * `dangerouslySetInnerHTML` is deliberate here, and safe for reasons worth
+ * writing down, because the content can come from a document somebody else
+ * owns and shared:
+ *
+ * - `generateHTML` builds the fragment with `Node.fromJSON`, which validates
+ *   every node and mark against the schema `zoneExtensions` describes and
+ *   throws on anything outside it. Nothing in that schema can carry script:
+ *   there is no image, no iframe, no raw-HTML node. A hand-edited row cannot
+ *   introduce one.
+ * - Serialisation runs through the real DOM -- `DOMSerializer` into a detached
+ *   document, then `innerHTML` -- so text and attribute values are escaped by
+ *   the browser. A crafted colour or font name cannot break out of its
+ *   attribute.
+ * - The one attacker-controlled URL in the schema is the link mark's `href`
+ *   (StarterKit bundles Link). Tiptap protocol-checks it inside the mark's own
+ *   `renderHTML` and blanks anything that is not http/https/mailto/tel and
+ *   friends, so `javascript:` never reaches the anchor.
+ *
+ * What it is not safe against is malformed content. `Node.fromJSON` throws, and
+ * throwing here happens during React's render, which would take the whole
+ * editor route down rather than spoil one line of furniture. Furniture written
+ * by a newer client -- or by hand through the API -- can legitimately hold a
+ * node this narrower schema does not know, so the throw is caught and the band
+ * left empty.
+ *
+ * Adding a node or mark to `zoneExtensions` that renders a URL or raw markup
+ * would invalidate the reasoning above. Re-check it if that list grows.
+ */
+function zoneHTML(content: JSONContent): string {
+  try {
+    return generateHTML(content, zoneExtensions)
+  } catch (caught) {
+    console.error('[DocumentEditor] unrenderable page furniture:', caught)
+    return ''
+  }
+}
+
 interface DocumentEditorProps {
   /** Initial content. Changes to this prop reload the editor document. */
   initialContent: JSONContent
@@ -216,7 +258,44 @@ export function DocumentEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, version, editor])
 
-  const EMPTY_ZONE: JSONContent = { type: 'doc', content: [] }
+  /*
+   * Identity of the furniture currently on the page.
+   *
+   * `PageZone` owns a Tiptap instance, and Tiptap's `content` option is initial
+   * content only -- a live instance never re-reads it. Because this component
+   * is deliberately not remounted when navigating between notes (the effect
+   * above swaps the body in place instead), an unkeyed zone kept note A's
+   * instance alive across the move to note B: B displayed A's header and
+   * footer, and the first keystroke inside B's header emitted A's text through
+   * `onHeaderChange`, which the page then saved onto B.
+   *
+   * Remounting on identity change is the fix rather than pushing new content
+   * into the surviving instance. A zone holds one short line, so re-creating it
+   * costs nothing beside a navigation, and it leaves behind no instance that
+   * could be stale -- a stale instance was the bug. Creation takes its content
+   * as initial content, which emits no update, so loading still never looks
+   * like an edit.
+   *
+   * `version` joins `documentId` in the key for the same reason it is in the
+   * body's content effect: a stale save makes the page re-read the document and
+   * adopt newer remote furniture under an unchanged id.
+   */
+  const furnitureKey = `${documentId}:${version}`
+
+  /*
+   * Built once per document rather than once per page. `generateHTML` compiles
+   * a fresh ProseMirror schema on every call, so pages 2..n would each pay for
+   * one on every render.
+   */
+  const headerHTML = useMemo(() => zoneHTML(header ?? EMPTY_ZONE), [header])
+  const footerHTML = useMemo(() => zoneHTML(footer ?? EMPTY_ZONE), [footer])
+
+  // Loading another document must not leave the writer inside the previous
+  // one's furniture: the zone remounts underneath them, and remounting while
+  // active would pull focus into a header they never asked to edit.
+  useEffect(() => {
+    setZone(null)
+  }, [documentId, version])
 
   /**
    * Draws a header or footer into a page's margin band.
@@ -232,6 +311,9 @@ export function DocumentEditor({
     const zoneBody =
       pageIndex === 0 ? (
         <PageZone
+          // Tied to the loaded document, so React replaces the instance rather
+          // than leaving the previous note's editor showing. See `furnitureKey`.
+          key={`${kind}:${furnitureKey}`}
           kind={kind}
           content={content}
           active={zone === kind}
@@ -245,7 +327,7 @@ export function DocumentEditor({
         <div
           aria-hidden="true"
           className="ProseMirror pointer-events-none text-ink-faint"
-          dangerouslySetInnerHTML={{ __html: generateHTML(content, zoneExtensions) }}
+          dangerouslySetInnerHTML={{ __html: kind === 'header' ? headerHTML : footerHTML }}
         />
       )
 

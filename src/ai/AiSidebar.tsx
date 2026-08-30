@@ -19,6 +19,7 @@ import {
 import { cn } from '../lib/cn'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import type { ApplyResult, SuggestionTarget } from '../editor/applySuggestion'
 
 export interface AiSelection {
   text: string
@@ -35,14 +36,33 @@ interface Turn {
   result?: AiResponse
   /** The text the suggestion would replace. */
   original?: string
+  /**
+   * Where in the note this suggestion belongs, captured the moment it was
+   * generated and kept for as long as the suggestion is on offer.
+   *
+   * This is the whole point of holding a transcript rather than a single live
+   * answer: the student can click away, scroll, or keep typing while the model
+   * thinks, so the live selection at the moment Apply is pressed says nothing
+   * about what the suggestion was for. Reading it there is how a rewrite of
+   * one paragraph used to land on unrelated text -- or, with nothing selected,
+   * over the entire note.
+   */
+  target?: SuggestionTarget
 }
 
 interface AiSidebarProps {
   documentId: string
   classId: string
   selection: AiSelection | null
-  /** Runs when the student accepts a suggestion. */
-  onApply: (content: string, selection: AiSelection | null) => void
+  /**
+   * Runs when the student accepts a suggestion, against the target the
+   * suggestion was generated for. Reports back whether the edit could be
+   * placed, so a refusal can be shown here rather than silently dropped.
+   */
+  onApply: (
+    content: string,
+    target: SuggestionTarget,
+  ) => Promise<ApplyResult | void> | ApplyResult | void
   /**
    * Offers a rewrite in the document itself, against the range it was asked
    * about. The range travels with the suggestion rather than being read from
@@ -53,7 +73,12 @@ interface AiSidebarProps {
   onPreview: (
     content: string,
     target: AiSelection,
-    outcome: { onAccept: () => void; onDecline: () => void },
+    outcome: {
+      onAccept: () => void
+      onDecline: () => void
+      /** The edit could not be placed; say so instead of clearing the offer. */
+      onRefused: (message: string) => void
+    },
   ) => void
   /**
    * Set by the editor page when an action is triggered from the document --
@@ -119,12 +144,21 @@ export function AiSidebar({
       const result = await call()
       setTurns((current) => [
         ...current,
-        { id: newId(), role: 'assistant', content: result.response, result, original },
+        {
+          id: newId(),
+          role: 'assistant',
+          content: result.response,
+          result,
+          original,
+          // Captured here, at generation time, and carried for the life of the
+          // suggestion. Nothing downstream ever reads the live selection.
+          target: target ?? undefined,
+        },
       ])
 
       // A rewrite is shown in the note, next to the words it would replace.
       // Modes that only explain or answer have nothing to put there.
-      if (result.proposed_content && target) {
+      if (result.proposed_content && target && mode) {
         onPreview(result.proposed_content, target, {
           // Accepting settles the question, so the transcript that led here
           // has served its purpose and would otherwise sit there stale,
@@ -149,6 +183,10 @@ export function AiSidebar({
               },
             ])
           },
+          // The words moved or vanished while the offer stood. The transcript
+          // stays put -- the suggestion is still valid, it just has nowhere to
+          // go until the student says where.
+          onRefused: (message) => setError(message),
         })
       }
     } catch (caught) {
@@ -240,15 +278,55 @@ export function AiSidebar({
     }
 
     const history = turns.slice(-6).map((turn) => ({ role: turn.role, content: turn.content }))
-    void run(asked, () =>
-      AIService.chat({ documentId, classId, selectedText: selection?.text }, asked, history),
+    /*
+     * The selection is read here, when the question is sent, and travels with
+     * the answer. A chat reply can propose an edit too, and it means the words
+     * that were highlighted when the question was asked -- not whatever is
+     * highlighted by the time the reply lands. Chat still shows no in-document
+     * preview (`run` only offers one for the named actions), so this changes
+     * nothing except what an Apply on the reply is anchored to.
+     */
+    void run(
+      asked,
+      () => AIService.chat({ documentId, classId, selectedText: selection?.text }, asked, history),
+      undefined,
+      selection,
     )
   }
 
-  function applyIssueFix(issue: AiIssue) {
-    // The issue quotes the student's own wording, so it can be replaced in place
-    // without needing an active selection.
-    onApply(issue.correction, null)
+  /**
+   * Sends a suggestion to the document and shows why if it could not be placed.
+   *
+   * Every apply in this panel goes through here, so there is one place where a
+   * refusal becomes something the student can see and act on. Doing nothing is
+   * not an option: an unexplained dead button reads as the app being broken.
+   */
+  async function apply(content: string, target: SuggestionTarget) {
+    setError(null)
+    const result = await onApply(content, target)
+    if (result && result.status === 'refused') setError(result.message)
+  }
+
+  /**
+   * Replaces the wording an issue quoted with its correction.
+   *
+   * The issue quotes the student's own words, so those words are the anchor --
+   * it does not need, and must not use, whatever happens to be selected. Passing
+   * no target at all is what used to replace the entire note with a one-sentence
+   * correction whenever nothing was highlighted.
+   *
+   * `scope` is the selection the check was run against, so a phrase that also
+   * appears elsewhere in the note still resolves inside the passage it was
+   * flagged in rather than being refused as ambiguous.
+   */
+  function applyIssueFix(issue: AiIssue, scope?: SuggestionTarget) {
+    void apply(issue.correction, {
+      text: issue.original,
+      scope:
+        scope?.from !== undefined && scope.to !== undefined
+          ? { from: scope.from, to: scope.to }
+          : undefined,
+    })
   }
 
   return (
@@ -324,11 +402,17 @@ export function AiSidebar({
                 key={turn.id}
                 result={turn.result}
                 original={turn.original}
-                onApply={(content) => onApply(content, selection)}
+                // The target this suggestion was generated against, not the
+                // live selection. Between the model answering and this button
+                // being pressed the student may have clicked anywhere at all,
+                // and the suggestion still means the words it was made about.
+                onApply={(content) =>
+                  void apply(content, turn.target ?? { text: turn.original ?? '' })
+                }
                 onReject={() =>
                   setTurns((current) => current.filter((entry) => entry.id !== turn.id))
                 }
-                onFixIssue={applyIssueFix}
+                onFixIssue={(issue) => applyIssueFix(issue, turn.target)}
                 onDismissIssue={() => undefined}
               />
             ) : (

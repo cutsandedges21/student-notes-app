@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Ordered cheapest-to-most-expensive so an obvious break fails fast.
+      #
+      # Not yet `--deny-warnings`: there is a known backlog of 9 warnings
+      # (set-state-in-effect, only-export-components, refs-during-render,
+      # no-eval). The lint-cleanup workstream clears them and then flips this
+      # to blocking. Advertising a gate that cannot pass would be worse than
+      # saying plainly that it is not a gate yet.
+      - name: Lint
+        run: npx oxlint
+
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Unit and integration tests
+        run: npx vitest run --reporter=dot
+
+      # The build needs the Vite env vars to exist, but not to be real: the
+      # Supabase client is constructed at module load and the AI key never
+      # reaches the client at all.
+      - name: Production build
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://example.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key

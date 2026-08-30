@@ -15,6 +15,12 @@ import { US_LETTER, type PageGeometry } from '../editor/pagination/geometry'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
 import { markdownToHtml, isInlineSuggestion, escapeHtml } from '../lib/markdown'
 import { aiPreviewKey } from '../editor/aiPreview'
+import {
+  applySuggestion,
+  describeRefusal,
+  type ApplyResult,
+  type SuggestionTarget,
+} from '../editor/applySuggestion'
 import { describeDataError } from '../lib/dataErrors'
 import { matchAiShortcut } from '../lib/shortcuts'
 import { ShortcutsDialog } from '../components/ShortcutsDialog'
@@ -396,7 +402,11 @@ export default function EditorPage() {
   function handlePreviewSuggestion(
     content: string,
     target: AiSelection,
-    outcome: { onAccept: () => void; onDecline: () => void },
+    outcome: {
+      onAccept: () => void
+      onDecline: () => void
+      onRefused: (message: string) => void
+    },
   ) {
     if (!editor) return
 
@@ -408,10 +418,25 @@ export default function EditorPage() {
         // Read the mapped range back out: the note may have been edited while
         // the offer stood, and the stored positions moved with it.
         const live = aiPreviewKey.getState(editor.state)
-        const range = live ? { ...target, from: live.from, to: live.to } : target
+        const range = live ? { from: live.from, to: live.to } : { from: target.from, to: target.to }
+        /*
+         * Anchor on the words the preview is currently sitting over rather than
+         * the ones captured when it was offered. ProseMirror mapped this range
+         * through every transaction since, so it is the strongest anchor
+         * available -- and re-reading the text keeps the applier's validation
+         * meaningful instead of comparing against wording the student has
+         * since edited underneath the offer.
+         */
+        const anchored: SuggestionTarget = {
+          text: editor.state.doc.textBetween(range.from, range.to, ' ').trim() || target.text,
+          from: range.from,
+          to: range.to,
+        }
         editor.commands.clearAiPreview()
-        void handleApplySuggestion(content, range)
-        outcome.onAccept()
+        void handleApplySuggestion(content, anchored).then((result) => {
+          if (result.status === 'refused') outcome.onRefused(result.message)
+          else outcome.onAccept()
+        })
       },
       onDecline: () => {
         editor.commands.clearAiPreview()
@@ -425,44 +450,50 @@ export default function EditorPage() {
   /**
    * Writes an accepted AI suggestion into the document.
    *
-   * Snapshots the prior content first so an AI edit is always reversible, then
-   * chooses the narrowest edit that fits: a single-line suggestion replaces
-   * exactly the selected range and leaves surrounding formatting untouched,
-   * while anything with block structure is converted to nodes. Replacing the
-   * whole document is the last resort, used only when there was no selection.
+   * Everything the assistant proposes lands here, and it only ever replaces the
+   * words the suggestion was made about. The target travels with the suggestion
+   * from the moment it was generated -- the live selection is deliberately not
+   * consulted, because the student is free to click elsewhere while the model
+   * is thinking and an offer has to keep meaning the text it was made about.
+   *
+   * When that text can no longer be located, or is found in more than one
+   * place, the edit is refused and the reason is handed back for the panel to
+   * show. There is no broader fallback: this used to replace the entire note
+   * whenever no range was to hand, which turned a one-sentence correction into
+   * the loss of the whole document.
    */
-  async function handleApplySuggestion(content: string, target: AiSelection | null) {
-    if (!editor || !doc) return
-
-    if (userId) {
-      // Best-effort history; failing to snapshot must not block the edit.
-      try {
-        await snapshotDocument(userId, doc.id, editor.getJSON(), 'ai')
-      } catch (caught) {
-        console.error('[EditorPage] failed to snapshot before AI edit:', caught)
-      }
+  async function handleApplySuggestion(
+    content: string,
+    target: SuggestionTarget,
+  ): Promise<ApplyResult> {
+    if (!editor || !doc) {
+      const reason = 'no-editor' as const
+      return { status: 'refused', reason, message: describeRefusal({ status: 'refused', reason }) }
     }
 
-    const range = target ?? selection
+    const result = await applySuggestion(editor, content, target, {
+      // Snapshotting is part of applying, not part of deciding: it runs only
+      // once the target has resolved, so a refused suggestion never leaves a
+      // spurious "before AI" version in the note's history.
+      beforeApply: async () => {
+        if (!userId) return
+        // Best-effort history; failing to snapshot must not block the edit.
+        try {
+          await snapshotDocument(userId, doc.id, editor.getJSON(), 'ai')
+        } catch (caught) {
+          console.error('[EditorPage] failed to snapshot before AI edit:', caught)
+        }
+      },
+    })
 
-    if (range) {
-      if (isInlineSuggestion(content)) {
-        editor.chain().focus().insertContentAt({ from: range.from, to: range.to }, content).run()
-      } else {
-        editor
-          .chain()
-          .focus()
-          .insertContentAt({ from: range.from, to: range.to }, markdownToHtml(content))
-          .run()
-      }
-    } else {
-      editor.chain().focus().setContent(markdownToHtml(content)).run()
-    }
+    if (result.status === 'refused') return result
 
+    selectionRef.current = null
     setSelection(null)
     // insertContentAt fires onUpdate, so autosave is already scheduled; flushing
     // makes the accepted change durable immediately rather than a second later.
     await scheduler.flush()
+    return result
   }
 
   /*
@@ -585,7 +616,7 @@ export default function EditorPage() {
               selection={selection}
               pendingMode={pendingMode}
               onPendingHandled={() => setPendingMode(null)}
-              onApply={(content, target) => void handleApplySuggestion(content, target)}
+              onApply={handleApplySuggestion}
               onPreview={handlePreviewSuggestion}
               active={panelDocked}
             />
@@ -604,7 +635,7 @@ export default function EditorPage() {
           selection={selection}
           pendingMode={pendingMode}
           onPendingHandled={() => setPendingMode(null)}
-          onApply={(content, target) => void handleApplySuggestion(content, target)}
+          onApply={handleApplySuggestion}
           onPreview={handlePreviewSuggestion}
           active={!panelDocked}
         />

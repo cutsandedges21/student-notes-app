@@ -3,6 +3,26 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DocumentEditor } from './DocumentEditor'
 
+/*
+ * jsdom has no layout, so `Range` is missing the CSSOM View methods entirely.
+ * Entering a header focuses it, and ProseMirror measures a Range to scroll the
+ * new selection into view -- which throws, and surfaces as an unhandled error
+ * that fails the whole run rather than one assertion.
+ *
+ * Kept local to this file rather than added to the shared setup: only the
+ * tests that step inside a page zone need it.
+ */
+if (!('getClientRects' in Range.prototype)) {
+  Object.defineProperty(Range.prototype, 'getClientRects', {
+    value: () => [],
+    configurable: true,
+  })
+  Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+    value: () => ({ top: 0, right: 0, bottom: 0, left: 0, width: 0, height: 0, x: 0, y: 0 }),
+    configurable: true,
+  })
+}
+
 const paragraph = (text: string) => ({
   type: 'doc',
   content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
