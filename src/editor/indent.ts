@@ -52,6 +52,35 @@ export const Indent = Extension.create<IndentOptions>({
     ]
   },
 
+  addKeyboardShortcuts() {
+    /*
+     * Tab indents, Shift+Tab outdents -- what every editor does and what the
+     * commands were missing, so the key did nothing but move focus out of the
+     * document.
+     *
+     * Inside a list the list extension's own Tab is the right behaviour
+     * (nesting the item), so this stands aside and lets it run. Everywhere
+     * else the handler always reports handled, even when already at the
+     * maximum: falling through would hand Tab back to the browser and tab the
+     * writer out of the page mid-sentence.
+     */
+    const inList = () =>
+      this.editor.isActive('listItem') || this.editor.isActive('taskItem')
+
+    return {
+      Tab: () => {
+        if (inList()) return false
+        this.editor.commands.indent()
+        return true
+      },
+      'Shift-Tab': () => {
+        if (inList()) return false
+        this.editor.commands.outdent()
+        return true
+      },
+    }
+  },
+
   addCommands() {
     const { types } = this.options
 

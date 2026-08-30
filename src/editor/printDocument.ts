@@ -1,169 +1,238 @@
 import { generateHTML, type JSONContent } from '@tiptap/core'
 import { editorExtensions } from './extensions'
 import { zoneExtensions } from './PageZone'
-import type { PageGeometry } from './pagination/geometry'
+import { printableHeight, printableWidth, type PageGeometry } from './pagination/geometry'
+import type { PageNumberPosition } from './pagination/types'
 
 /**
  * Printing and PDF export.
  *
- * Rather than styling the app out of the way with `@media print`, this builds a
- * separate document containing nothing but the note and prints that. The
- * earlier approach kept losing: the editor lives inside a full-height shell
- * with a scrolling column, and print stylesheets had to unpick every layer of
- * it -- one missed constraint and the printout was a screenshot of the app.
+ * Two decisions shape this file.
  *
- * A standalone document has no chrome to hide, no scroll container to unclip
- * and no flex shell to flatten. The browser paginates plain flowing content,
- * which is the one thing it is reliably good at.
+ * First, it prints a separate document rather than styling the app out of the
+ * way. The editor sits in a full-height shell around a scrolling column with an
+ * absolutely positioned page stack; a print stylesheet had to unpick every
+ * layer of that, and one missed constraint printed the whole interface.
+ *
+ * Second, `@page` carries no margin. Browsers draw their own furniture -- the
+ * document title, the date, the URL, the page count -- into that margin, and
+ * there is no property to turn it off. Removing the margin removes the space
+ * they are drawn in. The page's real margins are then laid out here instead,
+ * which is also what lets the header, footer and page number sit exactly where
+ * the editor shows them.
+ *
+ * Because margins are ours, pagination is ours too: content is measured and
+ * distributed into page boxes rather than poured into one flow.
  */
 
 export interface PrintPayload {
   title: string
-  /** Tiptap JSON for the body, header and footer. */
   content: JSONContent
   header?: JSONContent
   footer?: JSONContent
   geometry: PageGeometry
+  pageNumbers: PageNumberPosition
 }
 
 /**
  * Copies the app's stylesheets into the print document.
  *
- * The note has to look the same on paper as on screen -- same fonts, same
- * sizes, same list markers. Re-declaring that here would mean maintaining two
- * copies of the editor's typography and watching them drift.
+ * The note has to look on paper exactly as it does on screen -- same fonts,
+ * sizes, list markers and spacing. Restating that here would mean maintaining a
+ * second copy of the editor's typography and watching the two drift apart.
  */
-function collectStyles(): string {
-  const parts: string[] = []
-
+function collectStyles(doc: Document): void {
   document.querySelectorAll('style').forEach((node) => {
-    parts.push(`<style>${node.textContent ?? ''}</style>`)
+    const copy = doc.createElement('style')
+    copy.textContent = node.textContent
+    doc.head.appendChild(copy)
   })
 
   document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach((node) => {
-    parts.push(`<link rel="stylesheet" href="${node.href}">`)
+    const copy = doc.createElement('link')
+    copy.rel = 'stylesheet'
+    copy.href = node.href
+    doc.head.appendChild(copy)
   })
-
-  return parts.join('\n')
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-export function buildPrintHtml({
-  title,
-  content,
-  header,
-  footer,
-  geometry,
-}: PrintPayload): string {
-  const body = generateHTML(content, editorExtensions)
-  const headerHtml = header ? generateHTML(header, zoneExtensions) : ''
-  const footerHtml = footer ? generateHTML(footer, zoneExtensions) : ''
-
-  const hasHeader = Boolean(headerHtml.replace(/<[^>]*>/g, '').trim())
-  const hasFooter = Boolean(footerHtml.replace(/<[^>]*>/g, '').trim())
-
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>${escapeHtml(title || 'Untitled document')}</title>
-${collectStyles()}
-<style>
+function pageCss(geometry: PageGeometry): string {
+  return `
   /*
-   * The page itself. Margins belong to @page so every sheet gets them --
-   * padding on a block would only apply to the first and last.
+   * No margin, deliberately. It is the only way to stop the browser printing
+   * its own header and footer -- the title, date, URL and page number -- which
+   * have no property to disable them and are drawn into this margin.
    */
   @page {
     size: ${geometry.pageWidth}px ${geometry.pageHeight}px;
-    margin: ${geometry.marginTop}px ${geometry.marginRight}px ${geometry.marginBottom}px ${geometry.marginLeft}px;
+    margin: 0;
   }
 
   html, body {
     margin: 0;
     padding: 0;
     background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  /* Running header and footer: fixed elements repeat on every printed sheet,
-     which is the only way to get running heads out of a browser. They sit in
-     the margin @page reserved, hence the negative offsets. */
+  .print-page {
+    position: relative;
+    box-sizing: border-box;
+    width: ${geometry.pageWidth}px;
+    height: ${geometry.pageHeight}px;
+    padding: ${geometry.marginTop}px ${geometry.marginRight}px ${geometry.marginBottom}px ${geometry.marginLeft}px;
+    overflow: hidden;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  /* Without this the last page emits a trailing blank sheet. */
+  .print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /*
+   * The header and footer bands, rebuilt to match \`.doc-furniture\` on screen.
+   *
+   * Each band fills its whole margin and centres its contents, which is what
+   * puts a one-line header where the writer sees it rather than jammed against
+   * the paper's edge. The measurements are not chosen here: they are the ones
+   * the editor already uses, so what prints lines up with what was on screen.
+   */
   .print-header,
   .print-footer {
-    position: fixed;
+    position: absolute;
     left: 0;
     right: 0;
-    font-size: 10pt;
-    line-height: 1.3;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding-left: ${geometry.marginLeft}px;
+    padding-right: ${geometry.marginRight}px;
   }
 
-  .print-header { top: -${Math.round(geometry.marginTop * 0.6)}px; }
-  .print-footer { bottom: -${Math.round(geometry.marginBottom * 0.6)}px; }
+  .print-header { top: 0; height: ${geometry.marginTop}px; }
+  .print-footer { bottom: 0; height: ${geometry.marginBottom}px; }
 
-  .print-header p,
+  /* Mirrors \`.doc-furniture > *\`: one full-width child to align against. */
+  .print-header > *,
+  .print-footer > * { width: 100%; }
+
+  /* The footer text keeps its own line; the number sits under it. */
+  .print-footer-stack {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  /*
+   * Matches the \`min-h-[24px] px-1\` the on-screen zone carries. The minimum
+   * height is not cosmetic: the band centres its contents, so a zone that
+   * collapsed to its one line of text would sit three pixels off from where
+   * the writer saw it.
+   */
+  .print-zone {
+    box-sizing: border-box;
+    min-height: 24px;
+    padding: 0 4px;
+  }
+
+  /* \`.doc-furniture .ProseMirror\` on screen: 10pt, leading-snug. */
+  .print-zone,
+  .print-page-number {
+    font-size: 10pt;
+    line-height: 1.375;
+  }
+
+  .print-zone p,
   .print-footer p { margin: 0; }
 
-  /* The body is a plain flow. No positioning, no containment, nothing that
-     could stop the browser breaking it across pages. */
-  .print-body {
-    position: static;
-  }
+  .print-page-number { width: 100%; }
+  .print-page-number[data-align='left'] { text-align: left; }
+  .print-page-number[data-align='center'] { text-align: center; }
+  .print-page-number[data-align='right'] { text-align: right; }
 
-  /* Images must not straddle a page boundary. */
-  .print-body img {
-    max-width: 100%;
-    break-inside: avoid;
-  }
+  .print-body img { max-width: 100%; }
 
-  /* Headings should not be left stranded at the foot of a page. */
-  .print-body h1,
-  .print-body h2,
-  .print-body h3 {
-    break-after: avoid;
-  }
+  /* Layout spacers exist only to push text down on screen. Pages are measured
+     here, so keeping them would double every gap. */
+  .print-body [data-page-spacer] { display: none; }
+  .print-body [data-page-break] { display: none; }
+`
+}
 
-  .print-body p,
-  .print-body li {
-    orphans: 2;
-    widows: 2;
-  }
-
-  /* A manual page break in the note is honoured on paper. */
-  .print-body [data-page-break] {
-    height: 0;
-    border: 0;
-    break-after: page;
-  }
-
-  /* Layout spacers exist only to push text onto the next page on screen. The
-     printer does its own pagination, so they would double the gap. */
-  .print-body [data-page-spacer] {
-    display: none;
-  }
-</style>
-</head>
-<body>
-${hasHeader ? `<div class="print-header ProseMirror">${headerHtml}</div>` : ''}
-${hasFooter ? `<div class="print-footer ProseMirror">${footerHtml}</div>` : ''}
-<div class="print-body ProseMirror">${body}</div>
-</body>
-</html>`
+/** Height of a node including the margins that collapse around it. */
+function outerHeight(node: HTMLElement): number {
+  const style = getComputedStyle(node)
+  return (
+    node.getBoundingClientRect().height +
+    parseFloat(style.marginTop || '0') +
+    parseFloat(style.marginBottom || '0')
+  )
 }
 
 /**
- * Renders the note into a hidden frame and opens the browser's print dialog on
- * it.
+ * Splits the rendered body into pages.
+ *
+ * Measured in a container the same width as the printable area, so line breaks
+ * match the editor. Blocks are kept whole: a paragraph that will not fit starts
+ * the next page rather than being cut mid-line, which is what the on-screen
+ * pagination does too.
+ */
+function paginate(
+  source: HTMLElement,
+  limitHeight: number,
+): HTMLElement[][] {
+  const pages: HTMLElement[][] = []
+  let current: HTMLElement[] = []
+  let used = 0
+
+  const flush = () => {
+    pages.push(current)
+    current = []
+    used = 0
+  }
+
+  Array.from(source.children).forEach((child) => {
+    const node = child as HTMLElement
+
+    // A manual page break in the note is honoured exactly where it sits.
+    if (node.hasAttribute('data-page-break')) {
+      if (current.length) flush()
+      return
+    }
+
+    const height = outerHeight(node)
+
+    // A block taller than a whole page cannot be made to fit; give it its own
+    // page rather than looping forever trying to place it.
+    if (height > limitHeight && current.length === 0) {
+      current.push(node)
+      flush()
+      return
+    }
+
+    if (used + height > limitHeight && current.length > 0) flush()
+
+    current.push(node)
+    used += height
+  })
+
+  if (current.length || pages.length === 0) pages.push(current)
+  return pages
+}
+
+/**
+ * Builds the print document inside a frame and hands it to the browser.
  *
  * A frame rather than a popup: popups get blocked, and a blocked print is a
- * silent failure. The frame is removed once the dialog closes.
+ * silent failure.
  */
 export async function printNote(payload: PrintPayload): Promise<void> {
+  const { title, content, header, footer, geometry, pageNumbers } = payload
+
   const frame = document.createElement('iframe')
   frame.setAttribute('aria-hidden', 'true')
   frame.style.cssText =
@@ -171,34 +240,114 @@ export async function printNote(payload: PrintPayload): Promise<void> {
   document.body.appendChild(frame)
 
   const doc = frame.contentDocument
-  if (!doc) {
+  const win = frame.contentWindow
+  if (!doc || !win) {
     frame.remove()
     throw new Error('Could not create the print document')
   }
 
   doc.open()
-  doc.write(buildPrintHtml(payload))
+  // The title is what a browser would print in its header and what it suggests
+  // as the PDF filename. The header is suppressed by the zero margin; the
+  // filename is still worth setting.
+  doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>')
   doc.close()
 
-  const win = frame.contentWindow
-  if (!win) {
-    frame.remove()
-    throw new Error('Could not reach the print document')
-  }
+  doc.title = title || 'Untitled document'
+  collectStyles(doc)
 
-  // Web fonts load asynchronously. Printing before they arrive produces a
-  // fallback typeface on paper and the right one on screen.
+  const style = doc.createElement('style')
+  style.textContent = pageCss(geometry)
+  doc.head.appendChild(style)
+
+  // Rendered off-screen at the printable width so measurements match the
+  // wrapping the reader will actually get.
+  const measure = doc.createElement('div')
+  measure.className = 'print-body ProseMirror'
+  measure.style.cssText = `position:absolute;visibility:hidden;left:-10000px;top:0;width:${printableWidth(geometry)}px`
+  measure.innerHTML = generateHTML(content, editorExtensions)
+  doc.body.appendChild(measure)
+
+  // Web fonts change line heights, so pages must not be measured until they
+  // have loaded, or the printout breaks in different places than it should.
   try {
     await doc.fonts?.ready
   } catch {
-    // Font loading is best-effort; a fallback face beats not printing.
+    // Best effort: a fallback face is better than refusing to print.
   }
+
+  const pages = paginate(measure, printableHeight(geometry))
+
+  const headerHtml = header ? generateHTML(header, zoneExtensions) : ''
+  const footerHtml = footer ? generateHTML(footer, zoneExtensions) : ''
+  const hasHeader = Boolean(headerHtml.replace(/<[^>]*>/g, '').trim())
+  const hasFooter = Boolean(footerHtml.replace(/<[^>]*>/g, '').trim())
+
+  const numbered = pageNumbers !== 'off'
+
+  pages.forEach((nodes, index) => {
+    const page = doc.createElement('div')
+    page.className = 'print-page'
+
+    if (hasHeader) {
+      const band = doc.createElement('div')
+      band.className = 'print-header'
+      const zone = doc.createElement('div')
+      zone.className = 'print-zone ProseMirror'
+      zone.innerHTML = headerHtml
+      band.appendChild(zone)
+      page.appendChild(band)
+    }
+
+    const body = doc.createElement('div')
+    body.className = 'print-body ProseMirror'
+    body.style.width = `${printableWidth(geometry)}px`
+    nodes.forEach((node) => body.appendChild(node))
+    page.appendChild(body)
+
+    // The band is drawn for either reason: a writer can number pages without
+    // having written a footer, and can write one without numbering.
+    if (hasFooter || numbered) {
+      const band = doc.createElement('div')
+      band.className = 'print-footer'
+
+      // One stacked child, matching the screen. The band forces its direct
+      // children to full width, so footer text and number as siblings would
+      // split the row in half and align inside their own halves.
+      const stack = doc.createElement('div')
+      stack.className = 'print-footer-stack'
+
+      if (hasFooter) {
+        const zone = doc.createElement('div')
+        zone.className = 'print-zone ProseMirror'
+        zone.innerHTML = footerHtml
+        stack.appendChild(zone)
+      }
+
+      // Each page box is real here, so every sheet can carry its own number --
+      // unlike a running footer, which would repeat "1" throughout.
+      if (numbered) {
+        const number = doc.createElement('div')
+        number.className = 'print-page-number'
+        number.setAttribute('data-align', pageNumbers)
+        number.textContent = String(index + 1)
+        stack.appendChild(number)
+      }
+
+      band.appendChild(stack)
+      page.appendChild(band)
+    }
+
+    doc.body.appendChild(page)
+  })
+
+  measure.remove()
 
   win.focus()
   win.print()
 
-  // Chrome's print dialog is modal and returns here once dismissed; other
-  // engines return immediately, so the frame is removed on a delay rather than
-  // torn out from under a dialog that is still open.
+  // Chrome's dialog is modal and returns here once dismissed; other engines
+  // return immediately, so the frame goes on a delay rather than being pulled
+  // out from under a dialog that is still open.
   window.setTimeout(() => frame.remove(), 1000)
 }

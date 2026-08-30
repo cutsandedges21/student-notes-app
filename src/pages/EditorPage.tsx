@@ -265,6 +265,8 @@ export default function EditorPage() {
       header: headerRef.current ?? undefined,
       footer: footerRef.current ?? undefined,
       geometry,
+      // Whatever the writer chose; 'off' means no number is drawn at all.
+      pageNumbers: pageNumbersRef.current,
     }).catch((caught) => console.error('[EditorPage] print failed:', caught))
   }, [editor, title, geometry])
 
