@@ -275,13 +275,47 @@
     display: none !important;
   }
 
+  /*
+   * Unclip the document.
+   *
+   * On screen the editor lives inside a full-height flex shell with one
+   * scrolling column, which is what makes the chrome stay put while the page
+   * moves. Printing that shell prints only what happened to be on screen --
+   * a two-page note came out as a single page with the rest cut off. The
+   * height and overflow constraints are released so the content can flow to
+   * whatever length it actually is and the printer can paginate it.
+   */
+  html,
+  body,
+  #root,
+  .doc-shell,
+  .doc-scroll {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .doc-scroll {
+    padding: 0 !important;
+  }
+
   .doc-frame {
     display: block;
     padding: 0 !important;
   }
 
   .doc-stack {
-    width: auto !important;
+    /*
+     * Pinned to the paper width rather than left to fill it.
+     *
+     * With `width: auto` the document rewrapped to whatever width the print
+     * layout happened to use, so the same note came out with different line
+     * breaks -- and short enough to collapse two pages into one. Holding the
+     * page width keeps the printed copy identical to the one on screen.
+     */
+    width: var(--doc-page-w, 816px) !important;
+    margin: 0 auto !important;
     min-height: 0 !important;
     zoom: 1 !important;
   }
@@ -297,7 +331,55 @@
 
   @page {
     size: letter;
+    /*
+     * Vertical margins are the printer's, so the header and footer have room
+     * to sit in them. Horizontal margins stay 0 because the content keeps its
+     * own left/right padding -- a ruler dragged on screen then means the same
+     * thing on paper.
+     */
     margin: 1in 0;
+  }
+
+  /*
+   * Header and footer.
+   *
+   * On screen one copy is drawn per page, because the pages are backdrops the
+   * document flows over. On paper the browser does the paginating, so exactly
+   * one copy survives and `position: fixed` repeats it on every sheet -- the
+   * standard way to get running heads out of a browser. The rest are hidden or
+   * they would print stacked at their on-screen offsets.
+   */
+  .doc-furniture {
+    display: none !important;
+  }
+
+  .doc-furniture[data-page='0'] {
+    display: flex !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    height: auto !important;
+    /* Negative offsets place them in the page margin the @page rule reserved,
+       rather than on the first and last lines of the text. */
+    padding: 0 var(--doc-print-inset, 96px);
+  }
+
+  .doc-furniture--header[data-page='0'] {
+    top: -0.55in;
+    bottom: auto;
+    align-items: flex-start;
+  }
+
+  .doc-furniture--footer[data-page='0'] {
+    top: auto;
+    bottom: -0.55in;
+    align-items: flex-end;
+  }
+
+  /* Colour is an on-screen affordance meaning "not currently editing"; on
+     paper it would just look like faded ink. */
+  .doc-furniture .ProseMirror {
+    @apply text-ink;
   }
 
   /*

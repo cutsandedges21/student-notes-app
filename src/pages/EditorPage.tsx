@@ -8,6 +8,8 @@ import { SelectionToolbar } from '../editor/SelectionToolbar'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
 import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
 import { describeDataError } from '../lib/dataErrors'
+import { matchAiShortcut } from '../lib/shortcuts'
+import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { snapshotDocument } from '../services/documents'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
@@ -16,6 +18,7 @@ import { type SaveState } from '../components/SaveStatus'
 import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { createAutosaveScheduler } from '../lib/autosave'
 import { fetchClassBySlug } from '../services/classes'
 import {
@@ -38,6 +41,8 @@ export default function EditorPage() {
   const { classSlug, noteSlug } = useParams<{ classSlug: string; noteSlug: string }>()
   const { user } = useAuth()
   const online = useOnlineStatus()
+  // Matches the `lg:` breakpoint the panel's own visibility classes use.
+  const panelDocked = useMediaQuery('(min-width: 1024px)')
 
   // null while signed out -- services then read and write browser storage.
   const userId = user?.id ?? null
@@ -56,15 +61,28 @@ export default function EditorPage() {
   const [selection, setSelection] = useState<
     (AiSelection & { coords: { top: number; left: number } }) | null
   >(null)
+  // Mirrored into a ref for the shortcut handler, which is registered once and
+  // would otherwise close over the selection as it stood on mount.
+  const selectionRef = useRef<AiSelection | null>(null)
+  const handleSelectionChange = useCallback(
+    (next: (AiSelection & { coords: { top: number; left: number } }) | null) => {
+      selectionRef.current = next
+      setSelection(next)
+    },
+    [],
+  )
+  // The selection is nullable: a Ctrl+Alt shortcut can fire with nothing
+  // highlighted, and the panel answers that by asking which part to work on.
   const [pendingMode, setPendingMode] = useState<{
     mode: AiMode
-    selection: AiSelection
+    selection: AiSelection | null
   } | null>(null)
   // View menu state. `compact` is Docs' "hide the menus": it folds away the
   // title and menu rows and leaves the toolbar, which is why it is owned here
   // rather than inside the toolbar that toggles it.
   const [showRuler, setShowRuler] = useState(true)
   const [compact, setCompact] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const navigate = useNavigate()
 
   // The version the client last read. Every save is conditional on it, and it
@@ -181,14 +199,26 @@ export default function EditorPage() {
   // Save anything pending when leaving the page.
   useEffect(() => () => void scheduler.flush(), [scheduler])
 
-  // Ctrl/Cmd + Shift + A toggles the AI sidebar.
+  // Ctrl/Cmd + Shift + A toggles the AI sidebar; Ctrl/Cmd + Alt + letter runs
+  // an AI action on the current selection.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault()
         setSidebarOpen((open) => !open)
+        return
       }
+
+      const mode = matchAiShortcut(event)
+      if (!mode) return
+
+      event.preventDefault()
+      setSidebarOpen(true)
+      // Read through a ref: this listener is registered once, so closing over
+      // `selection` would pin it to whatever was highlighted on mount.
+      setPendingMode({ mode, selection: selectionRef.current })
     }
+
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
@@ -321,7 +351,7 @@ export default function EditorPage() {
   const displayState: SaveState = online ? saveState : 'offline'
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="doc-shell flex h-full flex-col">
       {!compact && (
         <header className="shrink-0 bg-surface">
           {editable && <DocsTitleBar
@@ -343,6 +373,7 @@ export default function EditorPage() {
                 onToggleRuler={() => setShowRuler((on) => !on)}
                 compact={compact}
                 onToggleCompact={() => setCompact((on) => !on)}
+                onShowShortcuts={() => setShortcutsOpen(true)}
               />
             }
           />}
@@ -356,7 +387,7 @@ export default function EditorPage() {
           initialContent={doc.content as JSONContent}
           onChange={handleContentChange}
           onReady={setEditor}
-          onSelectionChange={setSelection}
+          onSelectionChange={handleSelectionChange}
           showRuler={showRuler}
           compact={compact}
           onToggleCompact={() => setCompact((on) => !on)}
@@ -382,6 +413,7 @@ export default function EditorPage() {
               pendingMode={pendingMode}
               onPendingHandled={() => setPendingMode(null)}
               onApply={(content, target) => void handleApplySuggestion(content, target)}
+              active={panelDocked}
             />
           }
         />
@@ -395,8 +427,11 @@ export default function EditorPage() {
           pendingMode={pendingMode}
           onPendingHandled={() => setPendingMode(null)}
           onApply={(content, target) => void handleApplySuggestion(content, target)}
+          active={!panelDocked}
         />
       </AiDrawer>
+
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {!editable && (
         <button

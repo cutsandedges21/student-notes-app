@@ -10,6 +10,7 @@ import { PaginationController } from './pagination/controller'
 import { US_LETTER, type PageGeometry } from './pagination/geometry'
 import { Pagination } from './pagination/Pagination'
 import { PAGE_BREAK_NAME } from './pagination/PageBreak'
+import type { PageNumberPosition } from './pagination/types'
 import { Ruler } from './Ruler'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
 import { Pencil } from 'lucide-react'
@@ -60,6 +61,8 @@ interface DocumentEditorProps {
   footer?: JSONContent
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
+  /** Where the page number sits in the footer band, or `off`. */
+  pageNumbers?: PageNumberPosition
   /** False puts the document into read-only view mode. */
   editable?: boolean
   onEditableChange?: (editable: boolean) => void
@@ -80,6 +83,7 @@ export function DocumentEditor({
   footer,
   onHeaderChange,
   onFooterChange,
+  pageNumbers = 'off',
   editable = true,
   onEditableChange,
 }: DocumentEditorProps) {
@@ -200,8 +204,8 @@ export function DocumentEditor({
   function renderZone(kind: PageZoneKind, pageIndex: number) {
     const content = (kind === 'header' ? header : footer) ?? EMPTY_ZONE
 
-    if (pageIndex === 0) {
-      return (
+    const zoneBody =
+      pageIndex === 0 ? (
         <PageZone
           kind={kind}
           content={content}
@@ -212,15 +216,30 @@ export function DocumentEditor({
             kind === 'header' ? onHeaderChange?.(next) : onFooterChange?.(next)
           }
         />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="ProseMirror pointer-events-none text-ink-faint"
+          dangerouslySetInnerHTML={{ __html: generateHTML(content, zoneExtensions) }}
+        />
       )
-    }
 
+    if (kind === 'header' || pageNumbers === 'off') return zoneBody
+
+    /*
+     * The number gets its own line under the writer's footer text rather than
+     * sharing one, so turning numbering on can never shove what they wrote out
+     * of the band. Screen only: on paper the running footer is one fixed copy
+     * repeated on every sheet, so a number in it would print "1" throughout.
+     * The spacers carry the printed number instead.
+     */
     return (
-      <div
-        aria-hidden="true"
-        className="ProseMirror pointer-events-none text-ink-faint"
-        dangerouslySetInnerHTML={{ __html: generateHTML(content, zoneExtensions) }}
-      />
+      <>
+        {zoneBody}
+        <div className="doc-page-number" data-align={pageNumbers} aria-hidden="true">
+          {pageIndex + 1}
+        </div>
+      </>
     )
   }
 
@@ -275,7 +294,7 @@ export function DocumentEditor({
               wide, so zooming past 100% has to be reachable sideways rather
               than clipped. */}
           <div
-            className="flex-1 overflow-auto bg-surface-backdrop [scrollbar-gutter:stable_both-edges] sm:px-4"
+            className="doc-scroll flex-1 overflow-auto bg-surface-backdrop [scrollbar-gutter:stable_both-edges] sm:px-4"
             // Leaving a zone cannot rely on the body regaining focus: the body
             // is deliberately inert while a zone is active, so clicking it
             // never focuses it and an onFocus handler would never run. A
@@ -337,6 +356,7 @@ export function DocumentEditor({
               controller={controller}
               geometry={geometry}
               zoom={zoom}
+              pageNumbers={pageNumbers}
               renderHeader={(page) => renderZone('header', page)}
               renderFooter={(page) => renderZone('footer', page)}
             >

@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { PaginationController } from './pagination/controller'
 import { pageTop, printableHeight, stackHeight, type PageGeometry } from './pagination/geometry'
+import type { PageNumberPosition } from './pagination/types'
 
 /**
  * The paper the editor is drawn on.
@@ -25,7 +26,8 @@ interface PaginatedSheetProps {
   geometry: PageGeometry
   /** The writer's zoom from the toolbar. 1 = 100%. */
   zoom: number
-  showPageNumbers?: boolean
+  /** Where the page number sits in the footer band, or `off`. */
+  pageNumbers?: PageNumberPosition
   /**
    * Page furniture, drawn into each page's margin bands.
    *
@@ -50,7 +52,7 @@ export function PaginatedSheet({
   controller,
   geometry,
   zoom,
-  showPageNumbers = true,
+  pageNumbers = 'off',
   renderHeader,
   renderFooter,
   children,
@@ -87,8 +89,8 @@ export function PaginatedSheet({
   // convert client rects back to CSS pixels, so it has to be right before the
   // browser can paint a frame the plugin might measure.
   useLayoutEffect(() => {
-    controller.configure({ geometry, scale })
-  }, [controller, geometry, scale])
+    controller.configure({ geometry, scale, pageNumbers })
+  }, [controller, geometry, scale, pageNumbers])
 
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   const pageCount = Math.max(1, snapshot.pageCount)
@@ -98,11 +100,18 @@ export function PaginatedSheet({
     <div ref={frameRef} className="doc-frame">
       <div
         className="doc-stack"
-        style={{
-          width: geometry.pageWidth,
-          minHeight: stackHeight(geometry, pageCount),
-          zoom: scale,
-        }}
+        style={
+          {
+            width: geometry.pageWidth,
+            minHeight: stackHeight(geometry, pageCount),
+            zoom: scale,
+            // Printing reads these back: the paper has to be the same width as
+            // the page on screen, or the text rewraps and the printed copy
+            // breaks in different places than the one being edited.
+            '--doc-page-w': `${geometry.pageWidth}px`,
+            '--doc-print-inset': `${geometry.marginLeft}px`,
+          } as CSSProperties
+        }
       >
         <div className="doc-pages" aria-hidden="true">
           {pages.map((index) => (
@@ -129,13 +138,30 @@ export function PaginatedSheet({
           }
         >
           {children}
+
+          {/*
+            The last page has no spacer to hang a printed number on, so it gets
+            this instead: a filler as tall as the room left on the page, with
+            the number below it. Print-only -- on screen the footer band draws
+            it, like every other page.
+          */}
+          {pageNumbers !== 'off' && (
+            <div
+              className="doc-print-tail"
+              aria-hidden="true"
+              style={
+                {
+                  '--doc-print-fill': `${Math.max(0, snapshot.lastPageFill - 1)}px`,
+                } as CSSProperties
+              }
+            >
+              <div className="doc-print-page-number" data-align={pageNumbers}>
+                {pageCount}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/*
-          Decorative: the document itself is one continuous run of text, and a
-          screen reader announcing "1", "2", "3" between paragraphs would be
-          reading the paper rather than the note.
-        */}
         {/*
           Header and footer sit in the margin bands, outside the printable
           area, so they never collide with the text the writer is editing.
@@ -144,7 +170,10 @@ export function PaginatedSheet({
           pages.map((index) => (
             <div
               key={`header-${index}`}
-              className="doc-furniture"
+              // Printing keeps only page 0's copy and repeats it itself, so
+              // the page index has to be visible to CSS.
+              data-page={index}
+              className="doc-furniture doc-furniture--header"
               style={{
                 top: pageTop(geometry, index),
                 height: geometry.marginTop,
@@ -160,6 +189,7 @@ export function PaginatedSheet({
           pages.map((index) => (
             <div
               key={`footer-${index}`}
+              data-page={index}
               className="doc-furniture doc-furniture--footer"
               style={{
                 top: pageTop(geometry, index) + geometry.pageHeight - geometry.marginBottom,
@@ -172,20 +202,6 @@ export function PaginatedSheet({
             </div>
           ))}
 
-        {showPageNumbers &&
-          pageCount > 1 &&
-          pages.map((index) => (
-            <div
-              key={index}
-              aria-hidden="true"
-              className="doc-page-number"
-              style={{
-                top: pageTop(geometry, index) + geometry.pageHeight - geometry.marginBottom / 2,
-              }}
-            >
-              {index + 1}
-            </div>
-          ))}
       </div>
     </div>
   )
