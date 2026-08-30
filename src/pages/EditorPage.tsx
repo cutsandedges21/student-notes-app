@@ -490,6 +490,7 @@ export default function EditorPage() {
           onEditableChange={setEditable}
           fullScreen={fullScreen}
           onGeometryChange={setGeometry}
+          onPrint={handlePrint}
           header={doc.header as JSONContent}
           footer={doc.footer as JSONContent}
           pageNumbers={pageNumbers}

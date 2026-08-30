@@ -66,6 +66,8 @@ interface DocumentEditorProps {
    * needs the same paper and margins the ruler is currently showing.
    */
   onGeometryChange?: (geometry: PageGeometry) => void
+  /** Passed through to the toolbar's print control. */
+  onPrint?: () => void
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
   /** Where the page number sits in the footer band, or `off`. */
@@ -90,6 +92,7 @@ export function DocumentEditor({
   footer,
   fullScreen = false,
   onGeometryChange,
+  onPrint,
   onHeaderChange,
   onFooterChange,
   pageNumbers = 'off',
@@ -267,6 +270,7 @@ export function DocumentEditor({
           onZoomChange={setZoom}
           compact={compact}
           onToggleCompact={onToggleCompact}
+          onPrint={onPrint}
         />
       )}
       <div

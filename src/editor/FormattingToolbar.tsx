@@ -22,6 +22,8 @@ interface FormattingToolbarProps {
   /** True while the title and menu rows are hidden by the collapse chevron. */
   compact?: boolean
   onToggleCompact?: () => void
+  /** Shared with the File menu and Ctrl+P; window.print() prints the app. */
+  onPrint?: () => void
 }
 
 /**
@@ -182,6 +184,7 @@ export function FormattingToolbar({
   onZoomChange,
   compact = false,
   onToggleCompact,
+  onPrint,
 }: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
@@ -440,7 +443,7 @@ export function FormattingToolbar({
             onClick={() => editor.chain().focus().redo().run()}
           />
           <ToolButton label="Find in document" icon={Search} onClick={findInDocument} />
-          <ToolButton label="Print" icon={Printer} onClick={() => window.print()} />
+          <ToolButton label="Print" icon={Printer} onClick={() => onPrint?.()} />
           {/* No pressed state: spell check is on by default, and Docs leaves
               the button plain rather than lighting up on load. */}
           <ToolButton
