@@ -96,10 +96,23 @@ export function PaginatedSheet({
   const pageCount = Math.max(1, snapshot.pageCount)
   const pages = Array.from({ length: pageCount }, (_, index) => index)
 
+  /*
+   * Discrete sheets are only drawn once the count behind them is real.
+   *
+   * Until the engine has measured, the count is 1 while the text may already
+   * be several pages long, so drawing page shapes would put one sheet of
+   * paper under all of it and leave the rest of the note sitting on the grey
+   * backdrop. In that window -- and whenever pagination is off, where there
+   * are no page boundaries to draw at all -- the stack itself is the paper:
+   * one continuous sheet that always covers exactly as much as there is text.
+   */
+  const paginated = snapshot.measured && snapshot.enabled
+
   return (
     <div ref={frameRef} className="doc-frame">
       <div
         className="doc-stack"
+        data-continuous={paginated ? undefined : ''}
         style={
           {
             width: geometry.pageWidth,
@@ -113,15 +126,17 @@ export function PaginatedSheet({
           } as CSSProperties
         }
       >
-        <div className="doc-pages" aria-hidden="true">
-          {pages.map((index) => (
-            <div
-              key={index}
-              className="doc-page"
-              style={{ top: pageTop(geometry, index), height: geometry.pageHeight }}
-            />
-          ))}
-        </div>
+        {paginated && (
+          <div className="doc-pages" aria-hidden="true">
+            {pages.map((index) => (
+              <div
+                key={index}
+                className="doc-page"
+                style={{ top: pageTop(geometry, index), height: geometry.pageHeight }}
+              />
+            ))}
+          </div>
+        )}
 
         <div
           className="doc-content"

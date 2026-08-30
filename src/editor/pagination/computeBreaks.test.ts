@@ -135,6 +135,35 @@ describe('computePagination', () => {
     expect(812 + pageBreak.delta).toBe(STRIDE)
   })
 
+  // The printed spacer is not the screen spacer. On screen it has to clear the
+  // bottom margin, the gap between sheets and the next top margin; on paper
+  // `@page` supplies all three, so it only reaches the foot of the text band --
+  // which is what puts the printed page number at the foot of the page rather
+  // than directly under the last line.
+  it('measures the printed filler to the foot of the page, not to the next sheet', () => {
+    const [pageBreak] = run([
+      { top: 0, height: 800 },
+      { top: 812, height: 200, kind: 'atom' },
+    ]).breaks
+
+    expect(pageBreak.height).toBe(STRIDE - 800)
+    expect(pageBreak.printFill).toBe(PRINTABLE - 800)
+  })
+
+  it('reports the room left under a single page for its printed footer', () => {
+    expect(run([{ top: 0, height: 300 }]).lastPageFill).toBe(PRINTABLE - 300)
+  })
+
+  it("measures the last page's filler from that page's own start", () => {
+    // The block moves to page 2, where it occupies 200 of the 864 available.
+    const layout = run([
+      { top: 0, height: 800 },
+      { top: 812, height: 200, kind: 'atom' },
+    ])
+
+    expect(layout.lastPageFill).toBe(PRINTABLE - 200)
+  })
+
   it('splits a paragraph between its lines at the overflow point', () => {
     const layout = run(
       [
@@ -329,7 +358,10 @@ describe('computePagination', () => {
 describe('layoutsEqual', () => {
   const layout = (height: number) => ({
     pageCount: 2,
-    breaks: [{ pos: 10, height, delta: height, kind: 'block' as const, page: 0 }],
+    lastPageFill: 0,
+    breaks: [
+      { pos: 10, height, delta: height, printFill: height, kind: 'block' as const, page: 0 },
+    ],
   })
 
   it('ignores sub-pixel drift, so a settled layout is not re-applied', () => {
@@ -338,6 +370,8 @@ describe('layoutsEqual', () => {
 
   it('sees a real change', () => {
     expect(layoutsEqual(layout(240), layout(260))).toBe(false)
-    expect(layoutsEqual(layout(240), { pageCount: 3, breaks: layout(240).breaks })).toBe(false)
+    expect(
+      layoutsEqual(layout(240), { pageCount: 3, lastPageFill: 0, breaks: layout(240).breaks }),
+    ).toBe(false)
   })
 })

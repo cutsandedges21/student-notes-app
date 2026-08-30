@@ -57,6 +57,29 @@ export interface Measurer {
   lines(block: MeasuredBlock): MeasuredLine[]
 }
 
+/**
+ * Where the page number sits in the footer band, or `off` for no numbering.
+ *
+ * A document setting rather than a view preference: it changes what the paper
+ * says, so it is stored with the note and travels to anyone the note is
+ * shared with.
+ */
+export type PageNumberPosition = 'off' | 'left' | 'center' | 'right'
+
+export const PAGE_NUMBER_POSITIONS: readonly PageNumberPosition[] = [
+  'off',
+  'left',
+  'center',
+  'right',
+]
+
+export function isPageNumberPosition(value: unknown): value is PageNumberPosition {
+  return (
+    typeof value === 'string' &&
+    (PAGE_NUMBER_POSITIONS as readonly string[]).includes(value)
+  )
+}
+
 export type BreakKind =
   /** Inserted before a whole block that would not fit. */
   | 'block'
@@ -84,6 +107,17 @@ export interface ComputedBreak {
    * the net figure to convert measured positions back to natural ones.
    */
   delta: number
+  /**
+   * Spacer height when printing, which is not the same as `height`.
+   *
+   * On screen a spacer has to clear the current page's bottom margin, the gap
+   * between sheets, and the next page's top margin. On paper the browser
+   * supplies all three from `@page`, so the spacer only has to reach the end
+   * of the current page's text band. Carrying the figure here is what lets the
+   * printed footer sit at the foot of the page rather than directly under the
+   * last line of text.
+   */
+  printFill: number
   kind: BreakKind
   /** Index of the page this break closes. */
   page: number
@@ -92,6 +126,12 @@ export interface ComputedBreak {
 export interface PaginationLayout {
   breaks: ComputedBreak[]
   pageCount: number
+  /**
+   * Space left below the last page's content, in the same terms as
+   * `printFill`. The final page has no break to hang a printed footer on, so
+   * it gets a trailing filler of this height instead.
+   */
+  lastPageFill: number
 }
 
 export interface PaginationLimits {

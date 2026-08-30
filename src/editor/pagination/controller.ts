@@ -1,5 +1,5 @@
 import { US_LETTER, type PageGeometry } from './geometry'
-import { DEFAULT_LIMITS, type PaginationLimits } from './types'
+import { DEFAULT_LIMITS, type PageNumberPosition, type PaginationLimits } from './types'
 
 /**
  * The handle React and the ProseMirror plugin share.
@@ -20,13 +20,28 @@ export interface PaginationSettings {
   limits: PaginationLimits
   /** Node type name that represents a manual page break. */
   pageBreakName: string
+  /** Where the page number sits, or `off`. */
+  pageNumbers: PageNumberPosition
 }
 
 /** What React renders from: page backdrops, page numbers, stack height. */
 export interface PaginationSnapshot {
+  /**
+   * False until the engine has measured the laid-out document at least once.
+   *
+   * The count starts at 1 and only becomes real after a pass -- but the text
+   * is painted before that pass can run, because the text is what the pass
+   * measures. A renderer that trusts the count during that window draws one
+   * page of paper under several pages of text, leaving the overflow on the
+   * backdrop. Renderers check this and draw a continuous sheet until the real
+   * count arrives.
+   */
+  measured: boolean
   pageCount: number
   geometry: PageGeometry
   enabled: boolean
+  /** Space left below the last page's content, for its printed footer. */
+  lastPageFill: number
 }
 
 type Listener = () => void
@@ -37,19 +52,39 @@ export class PaginationController implements PaginationSettings {
   enabled = true
   limits: PaginationLimits = DEFAULT_LIMITS
   pageBreakName = 'pageBreak'
+  pageNumbers: PageNumberPosition = 'off'
 
   private snapshot: PaginationSnapshot = {
+    measured: false,
     pageCount: 1,
     geometry: this.geometry,
     enabled: this.enabled,
+    lastPageFill: 0,
   }
 
   private readonly listeners = new Set<Listener>()
-  private requestPass: (() => void) | null = null
+  /*
+   * A set, not a single slot. An editor can hold more than one plugin view
+   * over its life -- React re-mounts it in StrictMode, and ProseMirror
+   * rebuilds plugin views when the props change -- and the old one is not
+   * always torn down before the new one is built. With one slot, a late
+   * teardown clears the live view's callback and the controller goes quiet:
+   * margins, zoom and page numbering all stop reaching the engine, and
+   * nothing repaginates again until an edit happens to trigger a pass.
+   */
+  private readonly passRequesters = new Set<() => void>()
+  /** Set when a change arrives with no view attached to hear it. */
+  private passPending = false
 
   constructor(settings: Partial<PaginationSettings> = {}) {
     Object.assign(this, settings)
-    this.snapshot = { pageCount: 1, geometry: this.geometry, enabled: this.enabled }
+    this.snapshot = {
+      measured: false,
+      pageCount: 1,
+      geometry: this.geometry,
+      enabled: this.enabled,
+      lastPageFill: 0,
+    }
     this.getSnapshot = this.getSnapshot.bind(this)
     this.subscribe = this.subscribe.bind(this)
   }
@@ -83,10 +118,16 @@ export class PaginationController implements PaginationSettings {
       this.pageBreakName = patch.pageBreakName
       anyChange = true
     }
+    // The number is drawn inside the spacers, so switching it on or off has
+    // to redraw the decorations, not just re-render React.
+    if (patch.pageNumbers && patch.pageNumbers !== this.pageNumbers) {
+      this.pageNumbers = patch.pageNumbers
+      anyChange = true
+    }
 
     if (visibleChange) {
       this.snapshot = {
-        pageCount: this.snapshot.pageCount,
+        ...this.snapshot,
         geometry: this.geometry,
         enabled: this.enabled,
       }
@@ -100,15 +141,28 @@ export class PaginationController implements PaginationSettings {
     if (visibleChange || anyChange) this.invalidate()
   }
 
-  /** Ask the plugin for a pass. No-op before an editor is attached. */
+  /** Ask the plugin for a pass. Held over if no view is listening yet. */
   invalidate(): void {
-    this.requestPass?.()
+    if (this.passRequesters.size === 0) {
+      this.passPending = true
+      return
+    }
+    for (const request of this.passRequesters) request()
   }
 
   /** Called by the plugin once a layout has been computed. */
-  publish(pageCount: number): void {
-    if (pageCount === this.snapshot.pageCount) return
-    this.snapshot = { ...this.snapshot, pageCount }
+  publish(pageCount: number, lastPageFill = 0): void {
+    // `measured` is part of the comparison, not just the payload: a one-page
+    // document publishes the same count it started with, so comparing only the
+    // numbers would take this early return on the very first pass and leave
+    // the flag false forever.
+    const unchanged =
+      this.snapshot.measured &&
+      pageCount === this.snapshot.pageCount &&
+      lastPageFill === this.snapshot.lastPageFill
+    if (unchanged) return
+
+    this.snapshot = { ...this.snapshot, measured: true, pageCount, lastPageFill }
     this.emit()
   }
 
@@ -117,9 +171,14 @@ export class PaginationController implements PaginationSettings {
    * cannot leave the controller pointing at a dead view.
    */
   attach(requestPass: () => void): () => void {
-    this.requestPass = requestPass
+    this.passRequesters.add(requestPass)
+    // Anything that changed while nothing was listening still has to land.
+    if (this.passPending) {
+      this.passPending = false
+      requestPass()
+    }
     return () => {
-      if (this.requestPass === requestPass) this.requestPass = null
+      this.passRequesters.delete(requestPass)
     }
   }
 

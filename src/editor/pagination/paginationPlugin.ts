@@ -6,7 +6,7 @@ import { DisplacementIndex } from './displacement'
 import { isUsable } from './geometry'
 import { createViewMeasurer, SPACER_ATTRIBUTE } from './measure'
 import { createScheduler, type Scheduler } from './scheduler'
-import type { ComputedBreak, PaginationLayout } from './types'
+import type { ComputedBreak, PageNumberPosition, PaginationLayout } from './types'
 
 /**
  * The engine's ProseMirror half.
@@ -30,6 +30,7 @@ export interface PaginationPluginState {
   decorations: DecorationSet
   breaks: ComputedBreak[]
   pageCount: number
+  lastPageFill: number
 }
 
 export const paginationPluginKey = new PluginKey<PaginationPluginState>('pagination')
@@ -47,10 +48,22 @@ const MAX_DEBOUNCE_MS = 400
  */
 const MAX_PASSES_WITHOUT_EDIT = 12
 
+/**
+ * How close together applies have to be to count towards that cap.
+ *
+ * A runaway observe-apply cycle re-applies within milliseconds. Anything
+ * spaced further apart than this is ordinary work -- a settings change, a late
+ * image, the window being resized -- and must not be throttled, or the guard
+ * latches on after a long paste and pagination stops responding until the next
+ * keystroke.
+ */
+const SETTLE_WINDOW_MS = 1000
+
 const EMPTY_STATE: PaginationPluginState = {
   decorations: DecorationSet.empty,
   breaks: [],
   pageCount: 1,
+  lastPageFill: 0,
 }
 
 export function paginationPlugin(controller: PaginationController): Plugin<PaginationPluginState> {
@@ -80,6 +93,7 @@ export function paginationPlugin(controller: PaginationController): Plugin<Pagin
           decorations: value.decorations.map(tr.mapping, tr.doc),
           breaks,
           pageCount: value.pageCount,
+          lastPageFill: value.lastPageFill,
         }
       },
     },
@@ -100,6 +114,9 @@ class PaginationPluginView {
   private readonly resizeObserver: ResizeObserver | null
   private destroyed = false
   private passesWithoutEdit = 0
+  /** What the spacers currently in the DOM were drawn with. */
+  private renderedPageNumbers: PageNumberPosition | null = null
+  private lastApplyAt = 0
 
   constructor(view: EditorView, controller: PaginationController) {
     this.view = view
@@ -160,11 +177,12 @@ class PaginationPluginView {
     const current = paginationPluginKey.getState(view.state) ?? EMPTY_STATE
 
     if (!controller.enabled || !isUsable(controller.geometry)) {
-      controller.publish(1)
-      if (current.breaks.length > 0) this.apply({ breaks: [], pageCount: 1 })
+      controller.publish(1, 0)
+      if (current.breaks.length > 0) this.apply({ breaks: [], pageCount: 1, lastPageFill: 0 })
       return
     }
 
+    if (Date.now() - this.lastApplyAt > SETTLE_WINDOW_MS) this.passesWithoutEdit = 0
     if (this.passesWithoutEdit >= MAX_PASSES_WITHOUT_EDIT) return
 
     const measurer = createViewMeasurer({
@@ -175,9 +193,13 @@ class PaginationPluginView {
     })
 
     const layout = computePagination(measurer, controller.geometry, controller.limits)
-    controller.publish(layout.pageCount)
+    controller.publish(layout.pageCount, layout.lastPageFill)
 
-    if (layoutsEqual(layout, current)) {
+    // The layout can be identical while the spacers still need redrawing:
+    // moving the page number, or switching it off, changes what is inside
+    // them without moving a single break.
+    const numbersMatch = this.renderedPageNumbers === controller.pageNumbers
+    if (numbersMatch && layoutsEqual(layout, current)) {
       this.passesWithoutEdit = 0
       return
     }
@@ -188,43 +210,98 @@ class PaginationPluginView {
 
   private apply(layout: PaginationLayout): void {
     const { view } = this
+    const { pageNumbers } = this.controller
+    this.renderedPageNumbers = pageNumbers
+    this.lastApplyAt = Date.now()
     const decorations = DecorationSet.create(
       view.state.doc,
-      layout.breaks.map(spacerDecoration),
+      layout.breaks.map((item) => spacerDecoration(item, pageNumbers)),
     )
 
     // A transaction with no steps: `docChanged` is false, so Tiptap never
     // emits `update`, autosave never fires, and the document's version never
     // moves. Pagination stays a view concern and never reaches storage.
     const tr = view.state.tr
-      .setMeta(paginationPluginKey, { decorations, breaks: layout.breaks, pageCount: layout.pageCount })
+      .setMeta(paginationPluginKey, {
+        decorations,
+        breaks: layout.breaks,
+        pageCount: layout.pageCount,
+        lastPageFill: layout.lastPageFill,
+      })
       .setMeta('addToHistory', false)
 
     view.dispatch(tr)
   }
 }
 
-function spacerDecoration(computedBreak: ComputedBreak): Decoration {
-  const height = Math.max(0, Math.round(computedBreak.height * 100) / 100)
+function spacerDecoration(
+  computedBreak: ComputedBreak,
+  pageNumbers: PageNumberPosition,
+): Decoration {
+  const height = round(computedBreak.height)
+  // A hair under the space actually left on the page. Landing a box exactly on
+  // the boundary is the classic way to talk a print engine into an extra blank
+  // sheet, and a pixel is not visible in either medium.
+  const printFill = Math.max(0, round(computedBreak.printFill) - 1)
+  const label = computedBreak.page + 1
 
-  return Decoration.widget(computedBreak.pos, () => createSpacer(computedBreak.kind, height), {
-    // Before the content at this position, which is what makes it push.
-    side: -1,
-    // Height is part of the key so a spacer that only changed size is
-    // redrawn; without it ProseMirror would reuse the old element.
-    key: `page-spacer:${computedBreak.kind}:${height}`,
-    // The spacer is scenery. Clicking near it should put the caret in the
-    // text, not select a widget.
-    ignoreSelection: true,
-    marks: [],
-  })
+  return Decoration.widget(
+    computedBreak.pos,
+    () => createSpacer(computedBreak.kind, height, printFill, pageNumbers, label),
+    {
+      // Before the content at this position, which is what makes it push.
+      side: -1,
+      // Everything that changes the rendered element belongs in the key, or
+      // ProseMirror reuses the old DOM and the change never appears.
+      key: `page-spacer:${computedBreak.kind}:${height}:${printFill}:${pageNumbers}:${label}`,
+      // The spacer is scenery. Clicking near it should put the caret in the
+      // text, not select a widget.
+      ignoreSelection: true,
+      marks: [],
+    },
+  )
 }
 
-function createSpacer(kind: ComputedBreak['kind'], height: number): HTMLElement {
+function createSpacer(
+  kind: ComputedBreak['kind'],
+  height: number,
+  printFill: number,
+  pageNumbers: PageNumberPosition,
+  label: number,
+): HTMLElement {
   const element = document.createElement('div')
   element.setAttribute(SPACER_ATTRIBUTE, kind)
   element.setAttribute('aria-hidden', 'true')
   element.contentEditable = 'false'
   element.style.height = `${height}px`
+  // Read only by the print stylesheet: on paper the spacer stops at the foot
+  // of the text band and the browser supplies the margins and the sheet change.
+  element.style.setProperty('--doc-print-fill', `${printFill}px`)
+
+  /*
+   * The printed page number.
+   *
+   * It has to live here, in the flow, rather than in the running footer beside
+   * the writer's own footer text. A `position: fixed` footer is the only way to
+   * repeat text on every printed sheet, but it repeats it *identically* -- and
+   * the one CSS feature that would vary it, `counter(page)`, resolves to 0 in
+   * every browser because the page counter only exists inside `@page` margin
+   * boxes, which none of them implement. A spacer, by contrast, already knows
+   * which page it closes and how much room is left on it, so it can put the
+   * right number in the right place. Hidden on screen, where the footer band
+   * shows the number instead.
+   */
+  if (pageNumbers !== 'off') {
+    const number = document.createElement('div')
+    number.className = 'doc-print-page-number'
+    number.dataset.align = pageNumbers
+    number.textContent = String(label)
+    element.appendChild(number)
+  }
+
   return element
+}
+
+function round(value: number): number {
+  return Math.max(0, Math.round(value * 100) / 100)
 }

@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { fetchClassBySlug, updateClass } from '../services/classes'
 import { createDocument, fetchDocuments } from '../services/documents'
 import { formatRelativeTime } from '../lib/formatDate'
+import { describeDataError } from '../lib/dataErrors'
 import { MenuButton } from '../components/ui/MenuButton'
 import { RenameClassDialog } from '../components/RenameClassDialog'
 import { deleteClass } from '../services/classes'
@@ -21,6 +22,7 @@ export default function ClassPage() {
   const [loading, setLoading] = useState(true)
   const [professor, setProfessor] = useState('')
   const [renameOpen, setRenameOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const userId = user?.id ?? null
 
@@ -36,6 +38,7 @@ export default function ClassPage() {
       setDocuments(docs)
     } catch (caught) {
       console.error('[ClassPage] failed to load class:', caught)
+      setError(describeDataError(caught))
     } finally {
       setLoading(false)
     }
@@ -47,8 +50,14 @@ export default function ClassPage() {
 
   async function handleNewNote() {
     if (!klass) return
-    const doc = await createDocument(userId, klass.id)
-    navigate(`/classes/${klass.slug}/${doc.slug}`)
+    setError(null)
+    try {
+      const doc = await createDocument(userId, klass.id)
+      navigate(`/classes/${klass.slug}/${doc.slug}`)
+    } catch (caught) {
+      console.error('[ClassPage] failed to create note:', caught)
+      setError(describeDataError(caught))
+    }
   }
 
   async function handleProfessorBlur() {
@@ -75,11 +84,13 @@ export default function ClassPage() {
     )
     if (!confirmed) return
 
+    setError(null)
     try {
       await deleteClass(userId, klass.id)
       navigate('/classes', { replace: true })
     } catch (caught) {
       console.error('[ClassPage] failed to delete class:', caught)
+      setError(describeDataError(caught))
     }
   }
 
@@ -89,16 +100,38 @@ export default function ClassPage() {
     )
     if (!confirmed) return
 
+    setError(null)
     try {
       await deleteDocument(userId, documentId)
       await load()
     } catch (caught) {
       console.error('[ClassPage] failed to delete note:', caught)
+      setError(describeDataError(caught))
     }
   }
 
   if (loading) return null
-  if (!klass) return <div className="p-6 text-ink-muted">Class not found.</div>
+  if (!klass) {
+    return (
+      <div className="min-h-full">
+        <AppHeader />
+        <main className="mx-auto max-w-3xl px-6 py-10">
+          <Link to="/classes" className="text-sm text-ink-muted hover:text-ink">
+            ← My classes
+          </Link>
+          {/* A failed request and a genuinely missing class look identical from
+              here, so say which one happened rather than always blaming the
+              URL. */}
+          <p className="mt-6 text-ink">{error ? 'Could not open this class.' : 'Class not found.'}</p>
+          {error && (
+            <p role="alert" className="mt-2 text-sm text-red-600">
+              {error}
+            </p>
+          )}
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-full">
@@ -136,6 +169,12 @@ export default function ClassPage() {
             className="rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm text-ink placeholder:text-ink-faint hover:border-line-strong focus:border-line-strong"
           />
         </div>
+
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-red-600">
+            {error}
+          </p>
+        )}
 
         <div className="mt-10 flex items-center justify-between">
           <h2 className="text-sm font-medium uppercase tracking-wide text-ink-muted">

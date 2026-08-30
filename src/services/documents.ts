@@ -114,6 +114,7 @@ export async function createDocument(
       content_text: '',
       header: EMPTY_DOC,
       footer: EMPTY_DOC,
+      page_numbers: 'off',
     })
     .select()
     .single()
@@ -140,11 +141,13 @@ export async function saveDocument(
     classId?: string
     header?: JSONContent
     footer?: JSONContent
+    pageNumbers?: string
   },
 ): Promise<SaveResult> {
   if (!userId) return guestSaveDocument(params)
 
-  const { documentId, title, content, expectedVersion, classId, header, footer } = params
+  const { documentId, title, content, expectedVersion, classId, header, footer, pageNumbers } =
+    params
 
   // Retitling re-slugs so the URL keeps matching the note. Only done when the
   // caller passes classId, since the new slug has to be unique within it.
@@ -168,6 +171,7 @@ export async function saveDocument(
       content_text: extractPlainText(content),
       ...(header ? { header } : {}),
       ...(footer ? { footer } : {}),
+      ...(pageNumbers ? { page_numbers: pageNumbers } : {}),
       version: expectedVersion + 1,
     })
     .eq('id', documentId)

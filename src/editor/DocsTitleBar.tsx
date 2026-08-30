@@ -350,8 +350,13 @@ export function DocsTitleBar({
         this wrapper is already inset by the row's own px-3, so it only has to
         add the difference. Below `lg` the pill loses its offset and both land
         on that px-3, which is why the padding is scoped to `lg`.
+
+        The -ml-2 cancels the first menu button's own px-2. Aligning the button
+        boxes puts the "F" of File 8px inside the pill's edge, which reads as a
+        misalignment; what the eye lines up is the glyph, not the invisible
+        hover target around it.
       */}
-      <div className="flex min-w-0 items-center lg:pl-[calc(var(--chrome-gutter)-0.75rem)]">
+      <div className="-ml-2 flex min-w-0 items-center lg:pl-[calc(var(--chrome-gutter)-0.75rem)]">
         {menubar}
       </div>
     </div>

@@ -139,6 +139,24 @@ alter table public.documents
   default '{"type":"doc","content":[]}'::jsonb;
 
 -- ----------------------------------------------------------------------------
+-- Page numbering.
+--
+-- A document setting, not a view preference: it changes what the printed page
+-- says, so it travels with the note and with anyone the note is shared with.
+-- Only the position is stored -- the numbers themselves are measured by the
+-- pagination engine at render time and are never written down.
+-- ----------------------------------------------------------------------------
+alter table public.documents
+  add column if not exists page_numbers text not null default 'off';
+
+alter table public.documents
+  drop constraint if exists documents_page_numbers_check;
+
+alter table public.documents
+  add constraint documents_page_numbers_check
+  check (page_numbers in ('off', 'left', 'center', 'right'));
+
+-- ----------------------------------------------------------------------------
 -- document_versions
 --
 -- Lightweight snapshots, not a full version-history feature. A row is written

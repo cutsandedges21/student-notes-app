@@ -11,3 +11,7 @@ dist-ssr
 # Bulk Google Fonts download; the app loads web fonts from the CDN instead.
 # 151MB of unreferenced binaries has no business in git history.
 fonts/
+
+# Playwright MCP scratch output and Supabase CLI temp state.
+.playwright-mcp/
+supabase/.temp/

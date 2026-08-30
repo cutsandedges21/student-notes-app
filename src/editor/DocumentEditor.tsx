@@ -174,8 +174,17 @@ export function DocumentEditor({
     },
   })
 
+  /*
+   * The page holds this reference to drive the menubar, so it has to be given
+   * up when the editor goes away. Without the cleanup the page keeps a
+   * destroyed editor and the menubar reads `editor.view` on a view that no
+   * longer exists -- which Tiptap throws on, taking the whole route down. It
+   * only showed up once something unmounted the editor while the page stayed
+   * put, such as the loading state that now covers the first paint.
+   */
   useEffect(() => {
     onReady?.(editor)
+    return () => onReady?.(null)
   }, [editor, onReady])
 
   // Owned here rather than in the toolbar, which unmounts in view mode and so
@@ -249,13 +258,22 @@ export function DocumentEditor({
      * repeated on every sheet, so a number in it would print "1" throughout.
      * The spacers carry the printed number instead.
      */
+    /*
+     * Wrapped, not a fragment. The band is a flex row whose direct children
+     * are each forced to `width: 100%`, so returning two of them made the
+     * footer text and the number share the row at half width apiece. The
+     * number was then aligned inside its own right-hand half: `right` landed
+     * on the margin by coincidence, `left` on the middle of the page, and
+     * `center` three quarters of the way across. One child, stacked, gives all
+     * three the full text column to align against.
+     */
     return (
-      <>
+      <div className="flex w-full flex-col">
         {zoneBody}
         <div className="doc-page-number" data-align={pageNumbers} aria-hidden="true">
           {pageIndex + 1}
         </div>
-      </>
+      </div>
     )
   }
 

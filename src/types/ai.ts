@@ -107,11 +107,33 @@ export function describeAiError(code: AiErrorCode): string {
   }
 }
 
-/** Labels for the sidebar's suggested actions. */
-export const AI_MODE_LABELS: Record<Exclude<AiMode, 'CHAT'>, string> = {
+/** Every mode the sidebar offers as a button. CHAT is the free-text box. */
+export type AiActionMode = Exclude<AiMode, 'CHAT'>
+
+/**
+ * Labels for the sidebar's suggested actions.
+ *
+ * Phrased as "my notes" throughout: these actions run on the student's own
+ * highlighted text, never on the model's general knowledge, and the wording is
+ * what sets that expectation before the first click.
+ */
+export const AI_MODE_LABELS: Record<AiActionMode, string> = {
   IMPROVE_NOTES: 'Improve my notes',
   CHECK_NOTES: 'Check my notes',
-  EXPLAIN: 'Explain a concept',
-  MAKE_CLEARER: 'Make this clearer',
-  EXAM_READY: 'Exam-ready notes',
+  EXPLAIN: 'Explain my notes',
+  MAKE_CLEARER: 'Simplify my notes',
+  EXAM_READY: 'Examify my notes',
+}
+
+/**
+ * The verb each mode performs, used to ask for a selection in the mode's own
+ * words -- "Which part should I simplify?" beats one generic prompt repeated
+ * five times.
+ */
+export const AI_MODE_VERBS: Record<AiActionMode, string> = {
+  IMPROVE_NOTES: 'improve',
+  CHECK_NOTES: 'check',
+  EXPLAIN: 'explain',
+  MAKE_CLEARER: 'simplify',
+  EXAM_READY: 'turn into exam-ready notes',
 }

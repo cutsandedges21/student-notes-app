@@ -48,7 +48,7 @@ export function computePagination(
   geometry: PageGeometry,
   limits: PaginationLimits = DEFAULT_LIMITS,
 ): PaginationLayout {
-  if (!isUsable(geometry)) return { breaks: [], pageCount: 1 }
+  if (!isUsable(geometry)) return { breaks: [], pageCount: 1, lastPageFill: 0 }
 
   const printable = printableHeight(geometry)
   const stride = pageStride(geometry)
@@ -62,6 +62,8 @@ export function computePagination(
   let shift = 0
   /** Furthest layout y any content reached, used to count bled-over pages. */
   let contentBottom = 0
+  /** The same edge in natural terms, which is what a printed page needs. */
+  let naturalBottom = 0
 
   /**
    * Close the current page.
@@ -93,7 +95,16 @@ export function computePagination(
     const height = target - anchor - shift
     if (height < 0) return false
 
-    breaks.push({ pos, height, delta: target - contentTop - shift, kind, page })
+    breaks.push({
+      pos,
+      height,
+      delta: target - contentTop - shift,
+      // Only as far as the end of this page's text band: on paper the
+      // margins and the sheet change are the browser's job, not ours.
+      printFill: Math.max(0, pageStart + printable - anchor),
+      kind,
+      page,
+    })
     shift = target - contentTop
     page = targetPage
     pageStart = contentTop
@@ -221,6 +232,7 @@ export function computePagination(
         }
         prevBottom = block.bottom
         contentBottom = Math.max(contentBottom, block.bottom + shift)
+        naturalBottom = Math.max(naturalBottom, block.bottom)
         continue
       }
 
@@ -232,6 +244,7 @@ export function computePagination(
       placeBlock(block, prevBottom, depth)
       prevBottom = block.bottom
       contentBottom = Math.max(contentBottom, block.bottom + shift)
+      naturalBottom = Math.max(naturalBottom, block.bottom)
     }
   }
 
@@ -245,6 +258,12 @@ export function computePagination(
   return {
     breaks,
     pageCount: Math.max(1, page + 1, Math.min(bledPages, limits.maxPages)),
+    // `pageStart` is where the last page's content began, so this is what is
+    // left of its text band -- the filler that pushes the final page's
+    // printed footer down to the foot of the sheet.
+    lastPageFill: Number.isFinite(pageStart)
+      ? Math.max(0, pageStart + printable - naturalBottom)
+      : 0,
   }
 }
 

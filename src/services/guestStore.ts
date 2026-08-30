@@ -191,6 +191,7 @@ export function guestCreateDocument(classId: string, title = ''): DocumentRow {
     content_text: '',
     header: { type: 'doc', content: [] },
     footer: { type: 'doc', content: [] },
+    page_numbers: 'off',
     version: 1,
     created_at: timestamp,
     updated_at: timestamp,
@@ -207,8 +208,9 @@ export function guestSaveDocument(params: {
   expectedVersion: number
   header?: JSONContent
   footer?: JSONContent
+  pageNumbers?: string
 }): SaveResult {
-  const { documentId, title, content, expectedVersion, header, footer } = params
+  const { documentId, title, content, expectedVersion, header, footer, pageNumbers } = params
   const documents = read<DocumentRow>(DOCUMENTS_KEY)
   const index = documents.findIndex((row) => row.id === documentId)
 
@@ -233,6 +235,7 @@ export function guestSaveDocument(params: {
     content_text: extractPlainText(content),
     ...(header ? { header } : {}),
     ...(footer ? { footer } : {}),
+    ...(pageNumbers ? { page_numbers: pageNumbers } : {}),
     version,
     updated_at: now(),
   }

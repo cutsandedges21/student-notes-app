@@ -4,9 +4,11 @@ import { AppHeader } from '../components/AppHeader'
 import { Button } from '../components/ui/Button'
 import { CreateClassDialog } from '../components/CreateClassDialog'
 import { StorageNotice } from '../components/StorageNotice'
+import { MenuButton } from '../components/ui/MenuButton'
 import { useAuth } from '../contexts/AuthContext'
-import { createClass, fetchClasses, type ClassInput } from '../services/classes'
+import { createClass, deleteClass, fetchClasses, type ClassInput } from '../services/classes'
 import { formatRelativeTime } from '../lib/formatDate'
+import { describeDataError } from '../lib/dataErrors'
 import type { ClassWithCount } from '../types/database'
 
 export default function ClassesPage() {
@@ -14,6 +16,7 @@ export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const userId = user?.id ?? null
 
@@ -22,6 +25,7 @@ export default function ClassesPage() {
       setClasses(await fetchClasses(userId))
     } catch (caught) {
       console.error('[ClassesPage] failed to load classes:', caught)
+      setError(describeDataError(caught))
     } finally {
       setLoading(false)
     }
@@ -31,9 +35,27 @@ export default function ClassesPage() {
     void load()
   }, [load])
 
+  // Deliberately not caught here: the dialog needs the rejection so it can
+  // stay open and show what went wrong instead of closing on a failed create.
   async function handleCreate(input: ClassInput) {
     await createClass(userId, input)
     await load()
+  }
+
+  async function handleDelete(classId: string, name: string) {
+    const confirmed = window.confirm(
+      `Delete "${name}" and all of its notes? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    setError(null)
+    try {
+      await deleteClass(userId, classId)
+      await load()
+    } catch (caught) {
+      console.error('[ClassesPage] failed to delete class:', caught)
+      setError(describeDataError(caught))
+    }
   }
 
   return (
@@ -50,6 +72,12 @@ export default function ClassesPage() {
         </div>
 
         <StorageNotice hasContent={classes.length > 0} />
+
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-red-600">
+            {error}
+          </p>
+        )}
 
         {loading ? null : classes.length === 0 ? (
           <div className="mt-24 text-center">
@@ -68,12 +96,26 @@ export default function ClassesPage() {
         ) : (
           <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {classes.map((item) => (
-              <li key={item.id}>
+              <li key={item.id} className="relative">
+                {/* The menu sits outside the Link: nesting a button inside an
+                    anchor makes every menu click also navigate. */}
+                <div className="absolute right-3 top-3 z-10">
+                  <MenuButton
+                    label={`Options for ${item.name}`}
+                    items={[
+                      {
+                        label: 'Delete class',
+                        destructive: true,
+                        onSelect: () => void handleDelete(item.id, item.name),
+                      },
+                    ]}
+                  />
+                </div>
                 <Link
                   to={`/classes/${item.slug}`}
                   className="block rounded border border-line bg-surface p-5 transition-colors hover:border-line-strong hover:bg-surface-hover"
                 >
-                  <h2 className="font-medium text-ink">{item.name}</h2>
+                  <h2 className="pr-10 font-medium text-ink">{item.name}</h2>
                   {item.course_code && (
                     <p className="mt-0.5 text-sm text-ink-muted">{item.course_code}</p>
                   )}

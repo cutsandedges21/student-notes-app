@@ -39,6 +39,8 @@ export interface DocumentRow {
   header: unknown
   /** Page footer, its own Tiptap document. */
   footer: unknown
+  /** Where the page number sits in the footer: off | left | center | right. */
+  page_numbers: string
   /** Optimistic-concurrency counter. See saveDocument(). */
   version: number
   created_at: string

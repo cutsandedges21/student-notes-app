@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Dialog } from './ui/Dialog'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
+import { describeDataError } from '../lib/dataErrors'
 import type { ClassInput } from '../services/classes'
 import type { CourseLevel } from '../types/database'
 
@@ -20,12 +21,14 @@ export function CreateClassDialog({ open, onClose, onCreate }: CreateClassDialog
   const [semester, setSemester] = useState('')
   const [courseLevel, setCourseLevel] = useState<CourseLevel>('College')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!name.trim()) return
 
     setSubmitting(true)
+    setError(null)
     try {
       await onCreate({
         name: name.trim(),
@@ -40,6 +43,11 @@ export function CreateClassDialog({ open, onClose, onCreate }: CreateClassDialog
       setSemester('')
       setCourseLevel('College')
       onClose()
+    } catch (caught) {
+      // Without this the dialog simply sat there on failure, fields still
+      // filled, giving the impression that the button did nothing at all.
+      console.error('[CreateClassDialog] failed to create class:', caught)
+      setError(describeDataError(caught))
     } finally {
       setSubmitting(false)
     }
@@ -92,6 +100,12 @@ export function CreateClassDialog({ open, onClose, onCreate }: CreateClassDialog
             ))}
           </select>
         </div>
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+
         <div className="mt-2 flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" loading={submitting}>
