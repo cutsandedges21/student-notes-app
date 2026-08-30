@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
+import type { PageNumberPosition } from './pagination/types'
 import { cn } from '../lib/cn'
 
 /**
@@ -20,6 +21,11 @@ interface MenuAction {
   onSelect: () => void
   disabled?: boolean
   separatorBefore?: boolean
+  /**
+   * Starts a titled group above this item. Menus long enough to hold
+   * unrelated settings need more than a rule to say where one ends.
+   */
+  sectionBefore?: string
   /** Renders a tick in the left gutter, for the toggles under View. */
   checked?: boolean
 }
@@ -97,7 +103,14 @@ function Menu({ label, items, openMenu, setOpenMenu }: MenuProps) {
         >
           {items.map((item) => (
             <div key={item.label}>
-              {item.separatorBefore && <div className="my-2 h-px bg-line" />}
+              {(item.separatorBefore || item.sectionBefore) && (
+                <div className="my-2 h-px bg-line" />
+              )}
+              {item.sectionBefore && (
+                <div className="px-4 pb-1 pt-1 font-ui text-[11px] uppercase tracking-wide text-ink-faint">
+                  {item.sectionBefore}
+                </div>
+              )}
               <button
                 type="button"
                 role="menuitem"
@@ -143,6 +156,14 @@ interface DocumentMenubarProps {
   onToggleRuler: () => void
   compact: boolean
   onToggleCompact: () => void
+  /** Full screen hides every piece of chrome, not just the menus. */
+  fullScreen: boolean
+  onToggleFullScreen: () => void
+  /** Opens the keyboard shortcut reference. */
+  onShowShortcuts: () => void
+  /** Where the page number sits in the footer, or `off`. */
+  pageNumbers: PageNumberPosition
+  onPageNumbersChange: (position: PageNumberPosition) => void
 }
 
 export function DocumentMenubar({
@@ -154,6 +175,11 @@ export function DocumentMenubar({
   onToggleRuler,
   compact,
   onToggleCompact,
+  fullScreen,
+  onToggleFullScreen,
+  onShowShortcuts,
+  pageNumbers,
+  onPageNumbersChange,
 }: DocumentMenubarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -197,9 +223,19 @@ export function DocumentMenubar({
     if (url) chain().setImage({ src: url }).run()
   }
 
+  /**
+   * Two things at once: the app hides its own chrome, and the browser gives up
+   * its window furniture. The request can be refused or unavailable, so the
+   * app's state is what the layout keys off -- the mode still works without it.
+   */
   const toggleFullScreen = () => {
-    if (document.fullscreenElement) void document.exitFullscreen()
-    else void document.documentElement.requestFullscreen()
+    onToggleFullScreen()
+
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined)
+    } else {
+      void document.documentElement.requestFullscreen().catch(() => undefined)
+    }
   }
 
   const showWordCount = () => {
@@ -254,7 +290,8 @@ export function DocumentMenubar({
         { label: 'Hide the menus', checked: compact, onSelect: onToggleCompact },
         {
           label: 'Full screen',
-          checked: Boolean(document.fullscreenElement),
+          shortcut: 'Esc to exit',
+          checked: fullScreen,
           onSelect: toggleFullScreen,
           separatorBefore: true,
         },
@@ -266,10 +303,12 @@ export function DocumentMenubar({
         { label: 'Link', shortcut: 'Ctrl+K', onSelect: promptForLink },
         { label: 'Image', onSelect: promptForImage },
         {
-          label: 'Horizontal divider',
-          onSelect: () => chain().setHorizontalRule().run(),
+          label: 'Page break',
+          shortcut: 'Ctrl+Enter',
+          onSelect: () => chain().setPageBreak().run(),
           separatorBefore: true,
         },
+        { label: 'Horizontal divider', onSelect: () => chain().setHorizontalRule().run() },
         { label: 'Checklist', onSelect: () => chain().toggleTaskList().run() },
         { label: 'Bulleted list', onSelect: () => chain().toggleBulletList().run() },
         { label: 'Numbered list', onSelect: () => chain().toggleOrderedList().run() },
@@ -322,6 +361,37 @@ export function DocumentMenubar({
             const on = editor.view.dom.getAttribute('spellcheck') !== 'false'
             editor.view.dom.setAttribute('spellcheck', String(!on))
           },
+        },
+        {
+          label: 'Keyboard shortcuts',
+          onSelect: onShowShortcuts,
+          separatorBefore: true,
+        },
+        /*
+         * Page numbering. It belongs to the document rather than to the view --
+         * it changes what the paper says -- so it is saved with the note and
+         * printed, unlike the ticks under View.
+         */
+        {
+          label: 'No page numbers',
+          sectionBefore: 'Pagination',
+          checked: pageNumbers === 'off',
+          onSelect: () => onPageNumbersChange('off'),
+        },
+        {
+          label: 'Page number: left',
+          checked: pageNumbers === 'left',
+          onSelect: () => onPageNumbersChange('left'),
+        },
+        {
+          label: 'Page number: centre',
+          checked: pageNumbers === 'center',
+          onSelect: () => onPageNumbersChange('center'),
+        },
+        {
+          label: 'Page number: right',
+          checked: pageNumbers === 'right',
+          onSelect: () => onPageNumbersChange('right'),
         },
       ],
     },

@@ -59,6 +59,8 @@ interface DocumentEditorProps {
   /** Page header/footer documents, each edited in its own mode. */
   header?: JSONContent
   footer?: JSONContent
+  /** Full screen: nothing but the page, centred. */
+  fullScreen?: boolean
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
   /** Where the page number sits in the footer band, or `off`. */
@@ -81,6 +83,7 @@ export function DocumentEditor({
   sidebar,
   header,
   footer,
+  fullScreen = false,
   onHeaderChange,
   onFooterChange,
   pageNumbers = 'off',
@@ -247,7 +250,7 @@ export function DocumentEditor({
     <>
       {/* Viewing mode strips the chrome entirely so the page gets the window,
           which is the whole point of switching to it. */}
-      {editable && (
+      {editable && !fullScreen && (
         <FormattingToolbar
           editor={editor}
           zoom={zoom}
@@ -262,7 +265,7 @@ export function DocumentEditor({
           AI_SIDEBAR_SIDE === 'right' && 'flex-row-reverse',
         )}
       >
-        {sidebar && editable && (
+        {sidebar && editable && !fullScreen && (
           <aside
             aria-label="AI assistant"
             className={cn(
@@ -279,7 +282,7 @@ export function DocumentEditor({
               gap. The page below keeps its own centring: the scroll container
               reserves its scrollbar gutter on both edges, which puts the sheet
               on the column's true centre -- the same axis this row centres on. */}
-          {showRuler && editable && (
+          {showRuler && editable && !fullScreen && (
             <div className="hidden bg-surface lg:block">
               <Ruler
                 leftMargin={margins.left}
@@ -294,7 +297,13 @@ export function DocumentEditor({
               wide, so zooming past 100% has to be reachable sideways rather
               than clipped. */}
           <div
-            className="doc-scroll flex-1 overflow-auto bg-surface-backdrop [scrollbar-gutter:stable_both-edges] sm:px-4"
+            className={cn(
+              'doc-scroll flex-1 overflow-auto bg-surface-backdrop [scrollbar-gutter:stable_both-edges] sm:px-4',
+              // Centred vertically as well as horizontally in full screen: with
+              // no bars above it, a page pinned to the top looks dropped rather
+              // than placed.
+              fullScreen && 'flex items-start justify-center py-10',
+            )}
             // Leaving a zone cannot rely on the body regaining focus: the body
             // is deliberately inert while a zone is active, so clicking it
             // never focuses it and an onFocus handler would never run. A
@@ -310,7 +319,12 @@ export function DocumentEditor({
               stays put while the page scrolls; the wrapper ignores pointer
               events so it never blocks clicks on the document beneath it.
             */}
-            <div className="pointer-events-none sticky top-[38px] z-20 -mt-2 mb-2 hidden justify-end lg:flex">
+            <div
+              className={cn(
+                'pointer-events-none sticky top-[38px] z-20 -mt-2 mb-2 hidden justify-end',
+                fullScreen ? 'lg:hidden' : 'lg:flex',
+              )}
+            >
               <div className="pointer-events-auto rounded-full border border-line bg-surface px-1 py-1 shadow-pill transition-colors hover:bg-docs-chrome-hover">
                 <ToolbarDropdown
                   label="Mode"

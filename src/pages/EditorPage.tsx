@@ -2,9 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
 import { DocumentEditor } from '../editor/DocumentEditor'
+import {
+  isPageNumberPosition,
+  type PageNumberPosition,
+} from '../editor/pagination/types'
 import { DocumentMenubar } from '../editor/DocumentMenubar'
 import { DocsTitleBar } from '../editor/DocsTitleBar'
 import { SelectionToolbar } from '../editor/SelectionToolbar'
+import { AiBubble } from '../editor/AiBubble'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
 import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
 import { describeDataError } from '../lib/dataErrors'
@@ -83,7 +88,23 @@ export default function EditorPage() {
   const [showRuler, setShowRuler] = useState(true)
   const [compact, setCompact] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  // Mirrors the browser rather than assuming: Escape and F11 leave full
+  // screen without going through the menu, and the tick has to follow.
+  const [fullScreen, setFullScreen] = useState(false)
+  /*
+   * Page numbering. A document setting rather than a view one -- it changes
+   * what the printed page says -- so it is saved with the note. Mirrored into
+   * a ref for the same reason the header and footer are: the autosave closure
+   * has to send the current value, not the one captured when it was built.
+   */
+  const [pageNumbers, setPageNumbers] = useState<PageNumberPosition>('off')
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const sync = () => setFullScreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
 
   // The version the client last read. Every save is conditional on it, and it
   // advances on each successful write. Held in a ref so the scheduler always
@@ -96,6 +117,7 @@ export default function EditorPage() {
   // than whatever it held when the scheduler was created.
   const headerRef = useRef<JSONContent | null>(null)
   const footerRef = useRef<JSONContent | null>(null)
+  const pageNumbersRef = useRef<PageNumberPosition>('off')
   const classIdRef = useRef<string | null>(null)
   const classSlugRef = useRef<string | undefined>(classSlug)
   const slugRef = useRef<string | undefined>(noteSlug)
@@ -119,6 +141,7 @@ export default function EditorPage() {
           classId: classIdRef.current ?? undefined,
           header: headerRef.current ?? undefined,
           footer: footerRef.current ?? undefined,
+          pageNumbers: pageNumbersRef.current,
         })
 
         if (result.status === 'stale') {
@@ -179,6 +202,13 @@ export default function EditorPage() {
         documentIdRef.current = docRow?.id ?? null
         headerRef.current = (docRow?.header as JSONContent) ?? null
         footerRef.current = (docRow?.footer as JSONContent) ?? null
+        // Anything unrecognised (an older row, a hand-edited value) reads as
+        // no numbering rather than throwing the editor off.
+        const storedPosition = isPageNumberPosition(docRow?.page_numbers)
+          ? docRow.page_numbers
+          : 'off'
+        pageNumbersRef.current = storedPosition
+        setPageNumbers(storedPosition)
         classIdRef.current = classRow?.id ?? null
         classSlugRef.current = classRow?.slug ?? classSlug
         slugRef.current = docRow?.slug
@@ -198,6 +228,24 @@ export default function EditorPage() {
 
   // Save anything pending when leaving the page.
   useEffect(() => () => void scheduler.flush(), [scheduler])
+
+  useEffect(() => {
+    if (!fullScreen) return
+
+    // Browser-driven exits (F11, its own control) are already mirrored by the
+    // fullscreenchange sync above. This covers the case that sync cannot see:
+    // the request was refused, so the app is in full screen on its own and no
+    // fullscreenchange will ever fire.
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setFullScreen(false)
+        if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
+      }
+    }
+
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [fullScreen])
 
   // Ctrl/Cmd + Shift + A toggles the AI sidebar; Ctrl/Cmd + Alt + letter runs
   // an AI action on the current selection.
@@ -354,7 +402,7 @@ export default function EditorPage() {
     <div className="doc-shell flex h-full flex-col">
       {!compact && (
         <header className="shrink-0 bg-surface">
-          {editable && <DocsTitleBar
+          {editable && !fullScreen && <DocsTitleBar
             documentId={doc.id}
             title={title}
             onTitleChange={handleTitleChange}
@@ -373,7 +421,18 @@ export default function EditorPage() {
                 onToggleRuler={() => setShowRuler((on) => !on)}
                 compact={compact}
                 onToggleCompact={() => setCompact((on) => !on)}
+                fullScreen={fullScreen}
+                // State only: the menubar's own handler makes the browser
+                // request, so doing it here as well would toggle twice and
+                // cancel itself out.
+                onToggleFullScreen={() => setFullScreen((on) => !on)}
                 onShowShortcuts={() => setShortcutsOpen(true)}
+                pageNumbers={pageNumbers}
+                onPageNumbersChange={(next) => {
+                  pageNumbersRef.current = next
+                  setPageNumbers(next)
+                  scheduleCurrent()
+                }}
               />
             }
           />}
@@ -393,8 +452,10 @@ export default function EditorPage() {
           onToggleCompact={() => setCompact((on) => !on)}
           editable={editable}
           onEditableChange={setEditable}
+          fullScreen={fullScreen}
           header={doc.header as JSONContent}
           footer={doc.footer as JSONContent}
+          pageNumbers={pageNumbers}
           onHeaderChange={(next) => {
             headerRef.current = next
             scheduleCurrent()
@@ -419,7 +480,11 @@ export default function EditorPage() {
         />
       </main>
 
-      <AiDrawer open={sidebarOpen} onClose={() => setSidebarOpen(false)}>
+      <AiDrawer
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        alwaysOverlay={fullScreen}
+      >
         <AiSidebar
           documentId={doc.id}
           classId={doc.class_id}
@@ -442,6 +507,10 @@ export default function EditorPage() {
           <Pencil size={15} className="text-docs-icon" />
           Back to editing
         </button>
+      )}
+
+      {fullScreen && (
+        <AiBubble open={sidebarOpen} onClick={() => setSidebarOpen((open) => !open)} />
       )}
 
       <SelectionToolbar

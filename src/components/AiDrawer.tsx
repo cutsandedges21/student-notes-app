@@ -5,14 +5,23 @@ import { cn } from '../lib/cn'
 interface AiDrawerProps {
   open: boolean
   onClose: () => void
+  /**
+   * Renders the drawer at every width, not just below `lg`.
+   *
+   * Full screen hides the docked panel, so without this the assistant would
+   * have no surface at all on a desktop -- the bubble would toggle state that
+   * nothing displays.
+   */
+  alwaysOverlay?: boolean
   children: ReactNode
 }
 
-export function AiDrawer({ open, onClose, children }: AiDrawerProps) {
+export function AiDrawer({ open, onClose, alwaysOverlay = false, children }: AiDrawerProps) {
   return (
     <div
       className={cn(
-        'fixed inset-0 z-40 lg:hidden',
+        'fixed inset-0 z-40',
+        !alwaysOverlay && 'lg:hidden',
         open ? 'pointer-events-auto' : 'pointer-events-none',
       )}
       aria-hidden={!open}
