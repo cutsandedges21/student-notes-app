@@ -189,6 +189,8 @@ export function guestCreateDocument(classId: string, title = ''): DocumentRow {
     slug: uniqueSlug(title || 'untitled', guestDocumentSlugs(classId)),
     content: { type: 'doc', content: [] },
     content_text: '',
+    header: { type: 'doc', content: [] },
+    footer: { type: 'doc', content: [] },
     version: 1,
     created_at: timestamp,
     updated_at: timestamp,
@@ -203,8 +205,10 @@ export function guestSaveDocument(params: {
   title: string
   content: JSONContent
   expectedVersion: number
+  header?: JSONContent
+  footer?: JSONContent
 }): SaveResult {
-  const { documentId, title, content, expectedVersion } = params
+  const { documentId, title, content, expectedVersion, header, footer } = params
   const documents = read<DocumentRow>(DOCUMENTS_KEY)
   const index = documents.findIndex((row) => row.id === documentId)
 
@@ -227,6 +231,8 @@ export function guestSaveDocument(params: {
     ),
     content,
     content_text: extractPlainText(content),
+    ...(header ? { header } : {}),
+    ...(footer ? { footer } : {}),
     version,
     updated_at: now(),
   }

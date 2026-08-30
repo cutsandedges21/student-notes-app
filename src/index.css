@@ -158,6 +158,106 @@
 /* Alignment is written as an inline style attribute by TextAlign; nothing to
    declare here. Line height likewise. */
 
+/*
+ * Oversized images are capped at the printable height rather than being
+ * allowed to bleed across a page boundary, since an image is one atom the
+ * engine cannot split. The variable is written by PaginatedSheet, so it
+ * follows the margins.
+ */
+.ProseMirror .doc-image {
+  max-height: var(--doc-printable-h, none);
+}
+
+/*
+ * Pagination.
+ *
+ * Same rule as the blocks above: NOT inside `@layer components`, because
+ * `.ProseMirror` and the spacer attribute are only ever produced at runtime
+ * and the JIT purge would drop the whole block from the production build.
+ */
+
+/*
+ * Deliberately a block, not a centring flex row. As a flex item the page
+ * would be shrinkable, and at any zoom above 100% the column would squeeze
+ * the sheet below 816px rather than letting it overflow -- silently
+ * re-wrapping every line against a page that is no longer US Letter. Auto
+ * margins on a block child centre it just as well and resolve to zero when
+ * there is no room, so the overflow stays reachable in the scroller.
+ */
+.doc-frame {
+  padding-bottom: 48px;
+}
+
+/* Page backdrops, page numbers and the text all share this coordinate space,
+   so a spacer and the page edge it targets can never drift apart. */
+.doc-stack {
+  position: relative;
+  margin: 0 auto;
+}
+
+.doc-pages {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.doc-page {
+  position: absolute;
+  left: 0;
+  right: 0;
+  @apply rounded-[2px] bg-surface shadow-sheet;
+}
+
+/* Above the backdrops, and in normal flow so the stack grows with the text. */
+.doc-content {
+  position: relative;
+  z-index: 1;
+}
+
+.doc-page-number {
+  position: absolute;
+  left: 0;
+  right: 0;
+  @apply -translate-y-1/2 text-center font-ui text-[11px] leading-none text-ink-faint;
+}
+
+/* The measured spacer that pushes overflowing content onto the next page. At
+   an inline position this becomes a block box inside the paragraph, which is
+   what splits it between two line boxes. */
+.ProseMirror [data-page-spacer] {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * The block the spacer precedes starts flush against it, rather than one
+ * paragraph margin further down. The engine relies on this: it sizes a spacer
+ * so that its own bottom edge lands exactly on the next printable band, and a
+ * surviving margin would push the first line of the page off by that much.
+ *
+ * Specificity is what makes this stick -- one class plus one attribute beats
+ * both `.ProseMirror > * + *` and `.ProseMirror h1`.
+ */
+.ProseMirror [data-page-spacer] + * {
+  margin-top: 0;
+}
+
+/* A manual page break: a hairline in the flow, no height of its own. */
+.doc-page-break {
+  height: 0;
+  @apply border-t border-dashed border-line-strong;
+}
+
+.doc-page-break.ProseMirror-selectednode {
+  @apply border-accent;
+}
+
 @media print {
   /* Printing should produce the document, not the app chrome. */
   header,
@@ -167,7 +267,88 @@
     display: none !important;
   }
 
+  /* Paper comes from `@page`, so the on-screen scenery goes away. Vertical
+     margins are the printer's; the horizontal ones stay on the content so a
+     dragged ruler still means something on paper. */
+  .doc-pages,
+  .doc-page-number {
+    display: none !important;
+  }
+
+  .doc-frame {
+    display: block;
+    padding: 0 !important;
+  }
+
+  .doc-stack {
+    width: auto !important;
+    min-height: 0 !important;
+    zoom: 1 !important;
+  }
+
+  .doc-content {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
   .ProseMirror {
     padding: 0 !important;
   }
+
+  @page {
+    size: letter;
+    margin: 1in 0;
+  }
+
+  /*
+   * Print breaks land where the screen breaks: the spacer collapses to nothing
+   * and forces a real page break in its place, so the printed page turns on
+   * the same word. A break driven by a manual page break node is left to the
+   * node itself, so the two cannot both fire and skip a page.
+   */
+  .ProseMirror [data-page-spacer='block'],
+  .ProseMirror [data-page-spacer='line'] {
+    height: 0 !important;
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .ProseMirror [data-page-spacer='explicit'] {
+    height: 0 !important;
+  }
+
+  .ProseMirror [data-page-break] {
+    height: 0;
+    border: 0;
+    break-after: page;
+    page-break-after: always;
+  }
+}
+
+/*
+ * Page furniture: header and footer bands.
+ *
+ * Positioned over the page backdrops, inside the margins, so they occupy the
+ * space the body text is already padded away from. Laid out as flex so a
+ * one-line header sits centred in its band rather than jammed to the top.
+ */
+.doc-furniture {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  z-index: 1;
+}
+
+.doc-furniture--footer {
+  align-items: center;
+}
+
+.doc-furniture > * {
+  width: 100%;
+}
+
+.doc-furniture .ProseMirror {
+  @apply text-[10pt] leading-snug;
 }

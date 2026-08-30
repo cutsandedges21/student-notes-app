@@ -7,6 +7,7 @@ import { DocsTitleBar } from '../editor/DocsTitleBar'
 import { SelectionToolbar } from '../editor/SelectionToolbar'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
 import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
+import { describeDataError } from '../lib/dataErrors'
 import { snapshotDocument } from '../services/documents'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
@@ -73,6 +74,10 @@ export default function EditorPage() {
   // Refs, not state: the autosave scheduler closes over `persist`, and these
   // must reflect the current row rather than the render that created it.
   const documentIdRef = useRef<string | null>(null)
+  // Refs so the autosave closure always sends the current furniture rather
+  // than whatever it held when the scheduler was created.
+  const headerRef = useRef<JSONContent | null>(null)
+  const footerRef = useRef<JSONContent | null>(null)
   const classIdRef = useRef<string | null>(null)
   const classSlugRef = useRef<string | undefined>(classSlug)
   const slugRef = useRef<string | undefined>(noteSlug)
@@ -94,6 +99,8 @@ export default function EditorPage() {
           content,
           expectedVersion: versionRef.current,
           classId: classIdRef.current ?? undefined,
+          header: headerRef.current ?? undefined,
+          footer: footerRef.current ?? undefined,
         })
 
         if (result.status === 'stale') {
@@ -152,6 +159,8 @@ export default function EditorPage() {
         setKlass(classRow)
         setDoc(docRow)
         documentIdRef.current = docRow?.id ?? null
+        headerRef.current = (docRow?.header as JSONContent) ?? null
+        footerRef.current = (docRow?.footer as JSONContent) ?? null
         classIdRef.current = classRow?.id ?? null
         classSlugRef.current = classRow?.slug ?? classSlug
         slugRef.current = docRow?.slug
@@ -184,6 +193,14 @@ export default function EditorPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  /** Re-saves with whatever the body currently holds; used by the zones. */
+  function scheduleCurrent() {
+    scheduler.schedule({
+      title,
+      content: contentRef.current ?? (doc?.content as JSONContent),
+    })
+  }
+
   function handleContentChange(content: JSONContent) {
     contentRef.current = content
     scheduler.schedule({ title, content })
@@ -201,8 +218,13 @@ export default function EditorPage() {
     if (!klass) return
     // Flush first: navigating away otherwise drops anything still debounced.
     await scheduler.flush()
-    const created = await createDocument(userId, klass.id)
-    navigate(`/classes/${klass.slug}/${created.slug}`)
+    try {
+      const created = await createDocument(userId, klass.id)
+      navigate(`/classes/${klass.slug}/${created.slug}`)
+    } catch (caught) {
+      console.error('[EditorPage] failed to create note:', caught)
+      window.alert(describeDataError(caught))
+    }
   }
 
   async function handleDeleteNote() {
@@ -210,8 +232,13 @@ export default function EditorPage() {
     if (!window.confirm(`Delete "${title || 'Untitled note'}"? This cannot be undone.`)) return
 
     scheduler.cancel()
-    await deleteDocument(userId, doc.id)
-    navigate(`/classes/${klass.slug}`, { replace: true })
+    try {
+      await deleteDocument(userId, doc.id)
+      navigate(`/classes/${klass.slug}`, { replace: true })
+    } catch (caught) {
+      console.error('[EditorPage] failed to delete note:', caught)
+      window.alert(describeDataError(caught))
+    }
   }
 
   function focusTitle() {
@@ -335,6 +362,16 @@ export default function EditorPage() {
           onToggleCompact={() => setCompact((on) => !on)}
           editable={editable}
           onEditableChange={setEditable}
+          header={doc.header as JSONContent}
+          footer={doc.footer as JSONContent}
+          onHeaderChange={(next) => {
+            headerRef.current = next
+            scheduleCurrent()
+          }}
+          onFooterChange={(next) => {
+            footerRef.current = next
+            scheduleCurrent()
+          }}
           // Permanently docked on desktop; the drawer below covers narrow
           // screens, where a 360px column would leave no room to write.
           sidebar={

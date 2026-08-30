@@ -123,6 +123,22 @@ create policy "documents_delete_own"
   on public.documents for delete using (user_id = auth.uid());
 
 -- ----------------------------------------------------------------------------
+-- Page header and footer.
+--
+-- Separate Tiptap documents rather than nodes inside `content`: they repeat on
+-- every page conceptually, they are edited in their own mode, and keeping them
+-- out of the body means nothing in the main editor's history or selection
+-- handling has to know they exist.
+-- ----------------------------------------------------------------------------
+alter table public.documents
+  add column if not exists header jsonb not null
+  default '{"type":"doc","content":[]}'::jsonb;
+
+alter table public.documents
+  add column if not exists footer jsonb not null
+  default '{"type":"doc","content":[]}'::jsonb;
+
+-- ----------------------------------------------------------------------------
 -- document_versions
 --
 -- Lightweight snapshots, not a full version-history feature. A row is written

@@ -35,6 +35,10 @@ export interface DocumentRow {
   /** Tiptap JSON. Typed loosely here; the editor owns the shape. */
   content: unknown
   content_text: string
+  /** Page header, its own Tiptap document. */
+  header: unknown
+  /** Page footer, its own Tiptap document. */
+  footer: unknown
   /** Optimistic-concurrency counter. See saveDocument(). */
   version: number
   created_at: string

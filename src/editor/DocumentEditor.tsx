@@ -1,8 +1,15 @@
 import { EditorContent, useEditor, type Editor, type JSONContent } from '@tiptap/react'
 import type { AiSelection } from '../ai/AiSidebar'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { editorExtensions } from './extensions'
 import { FormattingToolbar } from './FormattingToolbar'
+import { PaginatedSheet } from './PaginatedSheet'
+import { PageZone, zoneExtensions, type PageZoneKind } from './PageZone'
+import { generateHTML } from '@tiptap/core'
+import { PaginationController } from './pagination/controller'
+import { US_LETTER, type PageGeometry } from './pagination/geometry'
+import { Pagination } from './pagination/Pagination'
+import { PAGE_BREAK_NAME } from './pagination/PageBreak'
 import { Ruler } from './Ruler'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
 import { Pencil } from 'lucide-react'
@@ -48,6 +55,11 @@ interface DocumentEditorProps {
    * shorten the toolbar and push the whole chrome around.
    */
   sidebar?: ReactNode
+  /** Page header/footer documents, each edited in its own mode. */
+  header?: JSONContent
+  footer?: JSONContent
+  onHeaderChange?: (content: JSONContent) => void
+  onFooterChange?: (content: JSONContent) => void
   /** False puts the document into read-only view mode. */
   editable?: boolean
   onEditableChange?: (editable: boolean) => void
@@ -64,14 +76,42 @@ export function DocumentEditor({
   compact = false,
   onToggleCompact,
   sidebar,
+  header,
+  footer,
+  onHeaderChange,
+  onFooterChange,
   editable = true,
   onEditableChange,
 }: DocumentEditorProps) {
   const [margins, setMargins] = useState({ left: DEFAULT_MARGIN, right: DEFAULT_MARGIN })
   const [zoom, setZoom] = useState(1)
+  // Which part of the page is being edited. One at a time, as in Docs.
+  const [zone, setZone] = useState<PageZoneKind | null>(null)
+
+  /*
+   * One controller per editor, since it carries this document's live margins,
+   * zoom and page count. It is the only channel between React and the
+   * pagination plugin: React writes settings into it, the plugin writes the
+   * page count back out, and neither reaches into the other.
+   */
+  const controller = useMemo(
+    () => new PaginationController({ pageBreakName: PAGE_BREAK_NAME }),
+    [],
+  )
+
+  // Top and bottom margins are fixed at an inch; the ruler owns the sides.
+  const geometry = useMemo<PageGeometry>(
+    () => ({ ...US_LETTER, marginLeft: margins.left, marginRight: margins.right }),
+    [margins.left, margins.right],
+  )
+
+  const extensions = useMemo(
+    () => [...editorExtensions, Pagination.configure({ controller })],
+    [controller],
+  )
 
   const editor = useEditor({
-    extensions: editorExtensions,
+    extensions,
     content: initialContent,
     editorProps: {
       attributes: {
@@ -123,8 +163,13 @@ export function DocumentEditor({
   // update event: without it, mounting would emit one, autosave would fire,
   // and every note would report "Saved" the instant it opened.
   useEffect(() => {
-    editor?.setEditable(editable, false)
-  }, [editor, editable])
+    editor?.setEditable(editable && zone === null, false)
+  }, [editor, editable, zone])
+
+  // Leaving edit mode entirely must not strand the page inside a zone.
+  useEffect(() => {
+    if (!editable) setZone(null)
+  }, [editable])
 
   // Swap content when navigating between documents without remounting the
   // editor. `emitUpdate: false` suppresses an onUpdate, so loading never
@@ -141,6 +186,43 @@ export function DocumentEditor({
     editor.commands.setContent(initialContent, { emitUpdate: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, version, editor])
+
+  const EMPTY_ZONE: JSONContent = { type: 'doc', content: [] }
+
+  /**
+   * Draws a header or footer into a page's margin band.
+   *
+   * Only the first page carries the live editor: one editable element cannot
+   * exist in several places, and spinning up an editor per page for what is
+   * usually a single line would be waste. Later pages render the same content
+   * as static HTML, which is what makes it read as repeating furniture.
+   */
+  function renderZone(kind: PageZoneKind, pageIndex: number) {
+    const content = (kind === 'header' ? header : footer) ?? EMPTY_ZONE
+
+    if (pageIndex === 0) {
+      return (
+        <PageZone
+          kind={kind}
+          content={content}
+          active={zone === kind}
+          enabled={editable}
+          onActivate={() => setZone(kind)}
+          onChange={(next) =>
+            kind === 'header' ? onHeaderChange?.(next) : onFooterChange?.(next)
+          }
+        />
+      )
+    }
+
+    return (
+      <div
+        aria-hidden="true"
+        className="ProseMirror pointer-events-none text-ink-faint"
+        dangerouslySetInnerHTML={{ __html: generateHTML(content, zoneExtensions) }}
+      />
+    )
+  }
 
   return (
     <>
@@ -189,10 +271,21 @@ export function DocumentEditor({
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto bg-surface-backdrop px-0 pb-0 pt-0 [scrollbar-gutter:stable_both-edges] sm:px-4 sm:pb-8">
-          {/* `zoom` rather than a transform: it scales the box itself, so the
-              page keeps flowing in the scroll container instead of overlapping
-              whatever follows it. */}
+          {/* `overflow-x` as well as `overflow-y`: the page is a fixed 816px
+              wide, so zooming past 100% has to be reachable sideways rather
+              than clipped. */}
+          <div
+            className="flex-1 overflow-auto bg-surface-backdrop [scrollbar-gutter:stable_both-edges] sm:px-4"
+            // Leaving a zone cannot rely on the body regaining focus: the body
+            // is deliberately inert while a zone is active, so clicking it
+            // never focuses it and an onFocus handler would never run. A
+            // pointer press anywhere outside the furniture exits instead.
+            onMouseDown={(event) => {
+              if (!zone) return
+              if ((event.target as HTMLElement).closest('.doc-furniture')) return
+              setZone(null)
+            }}
+          >
             {/*
               Docked under the ruler rather than in the toolbar. Sticky so it
               stays put while the page scrolls; the wrapper ignores pointer
@@ -237,12 +330,18 @@ export function DocumentEditor({
               </div>
             </div>
 
-            <div
-              style={{ paddingLeft: margins.left, paddingRight: margins.right, zoom }}
-              className="mx-auto min-h-full max-w-sheet bg-surface py-8 sm:min-h-[1056px] sm:py-14 sm:shadow-sheet"
+            {/* `zoom` rather than a transform: it scales the box itself, so
+                the pages keep flowing in the scroll container instead of
+                overlapping whatever follows them. */}
+            <PaginatedSheet
+              controller={controller}
+              geometry={geometry}
+              zoom={zoom}
+              renderHeader={(page) => renderZone('header', page)}
+              renderFooter={(page) => renderZone('footer', page)}
             >
               <EditorContent editor={editor} />
-            </div>
+            </PaginatedSheet>
           </div>
         </div>
       </div>
