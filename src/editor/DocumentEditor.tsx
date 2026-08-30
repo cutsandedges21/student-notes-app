@@ -61,6 +61,11 @@ interface DocumentEditorProps {
   footer?: JSONContent
   /** Full screen: nothing but the page, centred. */
   fullScreen?: boolean
+  /**
+   * Reports the page geometry upward. Printing builds its own document and
+   * needs the same paper and margins the ruler is currently showing.
+   */
+  onGeometryChange?: (geometry: PageGeometry) => void
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
   /** Where the page number sits in the footer band, or `off`. */
@@ -84,6 +89,7 @@ export function DocumentEditor({
   header,
   footer,
   fullScreen = false,
+  onGeometryChange,
   onHeaderChange,
   onFooterChange,
   pageNumbers = 'off',
@@ -111,6 +117,10 @@ export function DocumentEditor({
     () => ({ ...US_LETTER, marginLeft: margins.left, marginRight: margins.right }),
     [margins.left, margins.right],
   )
+
+  useEffect(() => {
+    onGeometryChange?.(geometry)
+  }, [geometry, onGeometryChange])
 
   const extensions = useMemo(
     () => [...editorExtensions, Pagination.configure({ controller })],

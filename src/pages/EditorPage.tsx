@@ -10,6 +10,8 @@ import { DocumentMenubar } from '../editor/DocumentMenubar'
 import { DocsTitleBar } from '../editor/DocsTitleBar'
 import { SelectionToolbar } from '../editor/SelectionToolbar'
 import { AiBubble } from '../editor/AiBubble'
+import { printNote } from '../editor/printDocument'
+import { US_LETTER, type PageGeometry } from '../editor/pagination/geometry'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
 import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
 import { describeDataError } from '../lib/dataErrors'
@@ -91,6 +93,8 @@ export default function EditorPage() {
   // Mirrors the browser rather than assuming: Escape and F11 leave full
   // screen without going through the menu, and the tick has to follow.
   const [fullScreen, setFullScreen] = useState(false)
+  // Mirrors the ruler's current paper so a printout matches what is on screen.
+  const [geometry, setGeometry] = useState<PageGeometry>(US_LETTER)
   /*
    * Page numbering. A document setting rather than a view one -- it changes
    * what the printed page says -- so it is saved with the note. Mirrored into
@@ -246,6 +250,34 @@ export default function EditorPage() {
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
   }, [fullScreen])
+
+  /**
+   * Printing builds a separate document containing only the note.
+   *
+   * The browser's own Ctrl+P would print the app -- shell, panel, toolbars and
+   * all -- so it is intercepted and replaced with this.
+   */
+  const handlePrint = useCallback(() => {
+    if (!editor) return
+    void printNote({
+      title,
+      content: editor.getJSON(),
+      header: headerRef.current ?? undefined,
+      footer: footerRef.current ?? undefined,
+      geometry,
+    }).catch((caught) => console.error('[EditorPage] print failed:', caught))
+  }, [editor, title, geometry])
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'p') {
+        event.preventDefault()
+        handlePrint()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [handlePrint])
 
   // Ctrl/Cmd + Shift + A toggles the AI sidebar; Ctrl/Cmd + Alt + letter runs
   // an AI action on the current selection.
@@ -427,6 +459,10 @@ export default function EditorPage() {
                 // cancel itself out.
                 onToggleFullScreen={() => setFullScreen((on) => !on)}
                 onShowShortcuts={() => setShortcutsOpen(true)}
+                onPrint={handlePrint}
+                // Same document; the browser's dialog offers Save as PDF as a
+                // destination, which is what writes the file.
+                onExportPdf={handlePrint}
                 pageNumbers={pageNumbers}
                 onPageNumbersChange={(next) => {
                   pageNumbersRef.current = next
@@ -453,6 +489,7 @@ export default function EditorPage() {
           editable={editable}
           onEditableChange={setEditable}
           fullScreen={fullScreen}
+          onGeometryChange={setGeometry}
           header={doc.header as JSONContent}
           footer={doc.footer as JSONContent}
           pageNumbers={pageNumbers}

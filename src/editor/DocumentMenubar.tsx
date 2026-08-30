@@ -159,6 +159,9 @@ interface DocumentMenubarProps {
   /** Full screen hides every piece of chrome, not just the menus. */
   fullScreen: boolean
   onToggleFullScreen: () => void
+  /** Opens the print dialog on a standalone copy of the note. */
+  onPrint: () => void
+  onExportPdf: () => void
   /** Opens the keyboard shortcut reference. */
   onShowShortcuts: () => void
   /** Where the page number sits in the footer, or `off`. */
@@ -177,6 +180,8 @@ export function DocumentMenubar({
   onToggleCompact,
   fullScreen,
   onToggleFullScreen,
+  onPrint,
+  onExportPdf,
   onShowShortcuts,
   pageNumbers,
   onPageNumbersChange,
@@ -256,7 +261,12 @@ export function DocumentMenubar({
       items: [
         { label: 'New note', onSelect: onNewNote },
         { label: 'Rename', onSelect: onRename },
-        { label: 'Print', shortcut: 'Ctrl+P', onSelect: () => window.print(), separatorBefore: true },
+        {
+          label: 'Download as PDF',
+          onSelect: onExportPdf,
+          separatorBefore: true,
+        },
+        { label: 'Print', shortcut: 'Ctrl+P', onSelect: onPrint },
         { label: 'Delete note', onSelect: onDelete, separatorBefore: true },
       ],
     },
