@@ -50,7 +50,11 @@ interface AiSidebarProps {
    * while the model is thinking, and the offer has to keep meaning the words
    * it was made about.
    */
-  onPreview: (content: string, target: AiSelection) => void
+  onPreview: (
+    content: string,
+    target: AiSelection,
+    outcome: { onAccept: () => void; onDecline: () => void },
+  ) => void
   /**
    * Set by the editor page when an action is triggered from the document --
    * the floating toolbar over a selection, or a Ctrl+Alt shortcut. The
@@ -84,6 +88,16 @@ export function AiSidebar({
   const [question, setQuestion] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /*
+   * Set when a suggestion was declined in the document. The next thing typed
+   * into the question box is then treated as "what was wrong with it" and
+   * re-runs that same action on that same text, rather than starting an
+   * unrelated chat.
+   */
+  const [revising, setRevising] = useState<{
+    mode: AiActionMode
+    target: AiSelection
+  } | null>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -95,6 +109,7 @@ export function AiSidebar({
     call: () => Promise<AiResponse>,
     original?: string,
     target?: AiSelection | null,
+    mode?: AiActionMode,
   ) {
     setError(null)
     setBusy(true)
@@ -109,7 +124,33 @@ export function AiSidebar({
 
       // A rewrite is shown in the note, next to the words it would replace.
       // Modes that only explain or answer have nothing to put there.
-      if (result.proposed_content && target) onPreview(result.proposed_content, target)
+      if (result.proposed_content && target) {
+        onPreview(result.proposed_content, target, {
+          // Accepting settles the question, so the transcript that led here
+          // has served its purpose and would otherwise sit there stale,
+          // offering an edit the note has already taken.
+          onAccept: () => {
+            setTurns([])
+            setError(null)
+            setRevising(null)
+          },
+          // Declining is rarely "no" outright -- it is usually "not like
+          // that". Asking what to change turns a dead end into the next
+          // attempt, with the answer steering a re-run.
+          onDecline: () => {
+            if (!mode) return
+            setRevising({ mode, target })
+            setTurns((current) => [
+              ...current,
+              {
+                id: newId(),
+                role: 'assistant',
+                content: 'What should I change about that suggestion?',
+              },
+            ])
+          },
+        })
+      }
     } catch (caught) {
       const code = caught instanceof AiRequestError ? caught.code : 'UPSTREAM_ERROR'
       setError(describeAiError(code))
@@ -149,6 +190,7 @@ export function AiSidebar({
       () => action.run({ documentId, classId, selectedText: target.text }),
       target.text,
       target,
+      mode,
     )
   }
 
@@ -173,6 +215,30 @@ export function AiSidebar({
     if (!asked || busy) return
 
     setQuestion('')
+
+    /*
+     * A declined suggestion turns the next message into a revision: the same
+     * action, on the same words, with what the student disliked passed along.
+     * Routing it to CHAT instead would answer the complaint in prose and
+     * leave the note untouched, which is not what "decline and say why" asks
+     * for.
+     */
+    if (revising) {
+      const { mode, target } = revising
+      const action = AI_ACTIONS.find((entry) => entry.mode === mode)
+      setRevising(null)
+      if (action) {
+        void run(
+          asked,
+          () => action.run({ documentId, classId, selectedText: target.text }, asked),
+          target.text,
+          target,
+          mode,
+        )
+        return
+      }
+    }
+
     const history = turns.slice(-6).map((turn) => ({ role: turn.role, content: turn.content }))
     void run(asked, () =>
       AIService.chat({ documentId, classId, selectedText: selection?.text }, asked, history),
@@ -300,7 +366,9 @@ export function AiSidebar({
             id="ai-question"
             rows={2}
             value={question}
-            placeholder="Ask anything…"
+            // The box does something different while a decline is pending, so
+            // it says so rather than leaving the student to discover it.
+            placeholder={revising ? 'What should I change?' : 'Ask anything…'}
             onChange={(event) => setQuestion(event.target.value)}
             onKeyDown={(event) => {
               // Enter sends; Shift+Enter is a newline, matching chat conventions.

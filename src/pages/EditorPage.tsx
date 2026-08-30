@@ -393,7 +393,11 @@ export default function EditorPage() {
    * no-op on the document rather than an undo. The suggestion also stays in
    * the transcript either way, so declining in the note never loses it.
    */
-  function handlePreviewSuggestion(content: string, target: AiSelection) {
+  function handlePreviewSuggestion(
+    content: string,
+    target: AiSelection,
+    outcome: { onAccept: () => void; onDecline: () => void },
+  ) {
     if (!editor) return
 
     editor.commands.showAiPreview({
@@ -407,10 +411,13 @@ export default function EditorPage() {
         const range = live ? { ...target, from: live.from, to: live.to } : target
         editor.commands.clearAiPreview()
         void handleApplySuggestion(content, range)
+        outcome.onAccept()
       },
       onDecline: () => {
         editor.commands.clearAiPreview()
-        setSelection(null)
+        // The selection stays: a decline is followed by saying what to change,
+        // and the re-run needs the same words still highlighted.
+        outcome.onDecline()
       },
     })
   }

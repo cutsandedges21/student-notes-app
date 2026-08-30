@@ -52,17 +52,29 @@ interface Target {
 const call = (mode: AiMode, target: Target, userRequest?: string) =>
   invoke({ mode, ...target, userRequest })
 
+/*
+ * `userRequest` steers a re-run: when a student declines a suggestion and says
+ * what was wrong with it, the same action runs again on the same text with
+ * that instruction attached.
+ */
 export const AIService = {
-  improveNotes: (target: Target) => call('IMPROVE_NOTES', target),
-  checkNotes: (target: Target) => call('CHECK_NOTES', target),
-  explain: (target: Target) => call('EXPLAIN', target),
-  makeClearer: (target: Target) => call('MAKE_CLEARER', target),
-  examReady: (target: Target) => call('EXAM_READY', target),
+  improveNotes: (target: Target, userRequest?: string) =>
+    call('IMPROVE_NOTES', target, userRequest),
+  checkNotes: (target: Target, userRequest?: string) =>
+    call('CHECK_NOTES', target, userRequest),
+  explain: (target: Target, userRequest?: string) => call('EXPLAIN', target, userRequest),
+  makeClearer: (target: Target, userRequest?: string) =>
+    call('MAKE_CLEARER', target, userRequest),
+  examReady: (target: Target, userRequest?: string) =>
+    call('EXAM_READY', target, userRequest),
   chat: (target: Target, question: string, conversation: AiRequest['conversation']) =>
     invoke({ mode: 'CHAT', ...target, userRequest: question, conversation }),
 }
 
-export const AI_ACTIONS: { mode: Exclude<AiMode, 'CHAT'>; run: (t: Target) => Promise<AiResponse> }[] =
+export const AI_ACTIONS: {
+  mode: Exclude<AiMode, 'CHAT'>
+  run: (t: Target, userRequest?: string) => Promise<AiResponse>
+}[] =
   [
     { mode: 'IMPROVE_NOTES', run: AIService.improveNotes },
     { mode: 'CHECK_NOTES', run: AIService.checkNotes },
