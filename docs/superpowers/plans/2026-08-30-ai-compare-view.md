@@ -1688,6 +1688,6 @@ If the walkthrough is clean, skip this step.
 
 ## Notes for whoever executes this
 
-- **`applySuggestion.ts` has no tests.** 311 lines of target resolution — the module that decides which words an AI edit lands on — with no coverage. Out of scope here, and worth its own task.
-- **The repo committed itself mid-session while this was being designed.** If `git status` shows work you did not do, check `git log` before assuming a clean base.
+- **This tree had concurrent activity while the plan was being written.** On branch `rebuild/phase-0-data-integrity`, another session committed the working tree mid-design and was actively adding `src/editor/applySuggestion.test.ts` and modifying `src/services/`, `src/types/database.ts` and `supabase/schema.sql`. **Re-establish a clean base before starting**: confirm `git status` is quiet, re-run the baseline suite, and re-read `src/editor/applySuggestion.ts` — Task 2 modifies it, and it may have moved again.
+- The baseline recorded above (22 files, 159 tests) predates `applySuggestion.test.ts` landing. Take a fresh baseline rather than trusting that number.
 - Run `npx vitest run` after every task, not just the ones that say so. The pagination engine is measurement-driven and reacts badly to layout changes in ways unit tests catch late.
