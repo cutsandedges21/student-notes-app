@@ -57,11 +57,14 @@ position remapping is needed to keep them aligned.
 interface AiCompare {
   /** The model's proposal, as returned. */
   content: string
-  /** The range in the live document it replaces. */
-  target: AiSelection
+  /** What the suggestion was generated against, carried from the panel. */
+  target: SuggestionTarget
+  /** Where it resolved to in the live document, decided before opening. */
+  range: { from: number; to: number }
   /** AiSidebar's outcome callbacks, passed through untouched. */
   onAccept: () => void
   onDecline: () => void
+  onRefused: (message: string) => void
 }
 
 const [compare, setCompare] = useState<AiCompare | null>(null)
@@ -74,43 +77,68 @@ swapped, chat collapsed, editor frozen, selection toolbar suppressed.
 
 `handlePreviewSuggestion` in `EditorPage` swaps its body — `setCompare(...)`
 in place of `editor.commands.showAiPreview(...)` — but keeps its signature.
-`AiSidebar` still calls `onPreview(content, target, { onAccept, onDecline })`
-and knows nothing about how the offer is presented. Its existing behaviour on
-each outcome survives as-is: clearing the transcript on accept, and on decline
-setting `revising` and appending "What should I change about that
-suggestion?".
+`AiSidebar` still calls
+`onPreview(content, target, { onAccept, onDecline, onRefused })` and knows
+nothing about how the offer is presented. Its existing behaviour on each
+outcome survives as-is: clearing the transcript on accept, on decline setting
+`revising` and appending "What should I change about that suggestion?", and on
+refusal reporting the message rather than clearing the offer.
 
 This is the boundary that makes the change small. The panel owns the
 conversation; the page owns how a proposal is shown.
 
+### Resolving the target before opening
+
+`applySuggestion` does not trust raw positions. It resolves a target in three
+steps — the captured range if the text still sitting there is the text the
+suggestion was generated against; failing that a search for that text, scoped
+first to the region it came from; failing that a refusal, because guessing
+edits words nobody pointed at.
+
+Compare runs that same resolution *up front*, on the live document, before
+splitting the view. A target that cannot be resolved never opens a comparison
+at all — it goes straight to `onRefused`, so the student is never shown a
+split they cannot accept.
+
+Freezing the left pane makes the rest deterministic. Nothing can edit the
+document between resolution and accept, so the re-resolution inside
+`applySuggestion` is guaranteed to take the validated-range path and land on
+exactly the range the preview was built from.
+
 ### Building the preview document
 
 The right pane hosts a real Tiptap editor, seeded with the live document, on
-which the same command that Accept will run is executed:
+which the same insertion that Accept will perform is executed at the resolved
+range:
 
 ```
 preview editor  ←  editor.getJSON()               live content
       ↓
-insertContentAt({ from, to }, html)               identical call to
-      ↓                                           handleApplySuggestion
+resolved range from resolveSuggestionTarget       same resolution Accept uses
+      ↓
+insertContentAt({ from, to }, body)               same insertion as
+      ↓                                           applyResolvedSuggestion
 inserted range = from … to + (sizeAfter - sizeBefore)
       ↓
 setEditable(false)  +  setAiRange({ variant: 'proposed' })
 ```
 
-`html` is derived exactly as `handleApplySuggestion` derives it:
-`escapeHtml(content)` for an inline suggestion, `markdownToHtml(content)`
-otherwise.
+`body` is derived exactly as `applyResolvedSuggestion` derives it:
+`isInlineSuggestion(content) ? content : markdownToHtml(content)`.
 
-Same extension set, same starting document, same command, same arguments —
-so the right pane *is* the result, not a rendering that resembles it.
+Note this is *not* the derivation the outgoing widget used — that one passed
+inline suggestions through `escapeHtml`, which is right for display but wrong
+as a preview of the result. Matching the applier is the whole point.
+
+Same extension set, same starting document, same range, same insertion — so
+the right pane *is* the result, not a rendering that resembles it.
 
 Accept does not transplant the preview's document. It calls the existing
-`handleApplySuggestion` on the real editor, which snapshots for history, runs
-`insertContentAt`, and flushes autosave. Re-running the command preserves
-undo history and cursor behaviour in a way that a whole-document `setContent`
-would not. Determinism plus the frozen left pane guarantees the two produce
-the same document.
+`handleApplySuggestion` → `applySuggestion` on the real editor, which resolves,
+snapshots for history, and applies through `applyResolvedSuggestion` —
+including its `closeHistory` call, so one Ctrl+Z takes the whole AI edit back
+out as a single step. Re-running the real path preserves undo history and
+cursor behaviour in a way that transplanting a document would not.
 
 ### Decorations
 
@@ -240,10 +268,11 @@ switching costs nothing and neither editor re-initialises.
 
 | Trigger | Result |
 |---|---|
-| Accept | `handleApplySuggestion` snapshots, inserts, flushes autosave → compare closes → chat returns, transcript cleared |
+| Accept | `applySuggestion` resolves, snapshots, inserts, flushes autosave → compare closes → chat returns, transcript cleared |
+| Accept refused | compare closes → chat returns showing the refusal message → document untouched. Should be unreachable while frozen, since resolution already succeeded before opening; handled because `applySuggestion` can still refuse and a silent no-op is indistinguishable from a bug |
 | Reject | compare closes → chat returns with revision prompt → document untouched, no undo needed |
 | Escape | identical to Reject; takes priority over the full-screen exit binding |
-| Target range collapses | cannot occur while frozen; the mapping guard remains as a safety net and closes compare |
+| Target unresolvable | compare never opens; `onRefused` fires directly from `handlePreviewSuggestion` |
 
 Leaving compare always restores: editor editable, chrome back, chat back to
 the state it was in when compare opened.
@@ -263,11 +292,17 @@ the state it was in when compare opened.
 
 ## Testing
 
-- Reaching compare: a proposal with a target opens the split, collapses the
-  chat, and freezes the editor.
+- Reaching compare: a proposal with a resolvable target opens the split,
+  collapses the chat, and freezes the editor.
+- Unresolvable target: compare never opens and `onRefused` fires — covering
+  both `not-found` and `ambiguous`.
 - Preview fidelity: the preview document equals the document produced by
   accepting — asserted by comparing JSON, which is the property the whole
-  design rests on.
+  design rests on. Worth asserting for an inline suggestion specifically,
+  since that is the case where the old widget's `escapeHtml` derivation and
+  the applier's disagree.
+- Undo: one Ctrl+Z after accepting restores the pre-edit document in a single
+  step, including when the student typed immediately before the action.
 - Reject: document JSON is byte-identical to before, chat is back, transcript
   retains the revision prompt, editor is editable again.
 - Accept: document contains the proposal, chat is back with an empty
@@ -291,11 +326,11 @@ the state it was in when compare opened.
 
 ## Out of scope
 
-`applyIssueFix` calls `onApply(issue.correction, null)`, and
-`handleApplySuggestion` with a null target and no live selection falls through
-to `setContent(...)` — **replacing the entire document with the correction**,
-contradicting the comment above it claiming an in-place replacement.
+The `SuggestionCard` in the transcript and its `Fix this` buttons keep their
+current behaviour: they call `onApply` and write directly, without a
+comparison. This change is scoped to the selection → prompt → answer flow.
 
-This is a pre-existing bug on a different path. The `Fix this` and
-`SuggestionCard` buttons keep their current behaviour so this change stays
-scoped to the selection → prompt → answer flow. Worth fixing separately.
+Routing those through compare as well is a reasonable follow-up, but they
+differ in kind — an issue fix is a one-clause correction the student can read
+in full inside the card, where a full-document comparison is more ceremony
+than the decision needs.
