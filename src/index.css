@@ -195,6 +195,17 @@
   margin: 0 auto;
 }
 
+/*
+ * Before the engine has measured -- and whenever pagination is off -- the
+ * stack is the paper. It is sized by the text inside it, so it covers every
+ * line there is, where the page shapes below can only cover as many pages as
+ * the engine has counted so far. Without this the overflow paints straight
+ * onto the grey backdrop for the frame or two before the first pass lands.
+ */
+.doc-stack[data-continuous] {
+  @apply rounded-[2px] bg-surface shadow-sheet;
+}
+
 .doc-pages {
   position: absolute;
   inset: 0;
@@ -214,11 +225,40 @@
   z-index: 1;
 }
 
+/*
+ * The page number, on screen.
+ *
+ * A line inside the footer band rather than a floating badge, so it sits where
+ * it will print and so the writer's own footer text keeps the line above it.
+ */
 .doc-page-number {
-  position: absolute;
-  left: 0;
-  right: 0;
-  @apply -translate-y-1/2 text-center font-ui text-[11px] leading-none text-ink-faint;
+  @apply w-full font-doc text-[10pt] leading-snug text-ink;
+}
+
+.doc-page-number[data-align='left'] {
+  text-align: left;
+}
+.doc-page-number[data-align='center'] {
+  text-align: center;
+}
+.doc-page-number[data-align='right'] {
+  text-align: right;
+}
+
+/*
+ * The page number, on paper.
+ *
+ * Carried by the spacers rather than by the running footer, and hidden here
+ * because on screen the footer band already shows it. See `createSpacer` in
+ * pagination/paginationPlugin.ts for why the printed number cannot live in the
+ * running footer: that is one fixed copy repeated on every sheet, and the one
+ * CSS feature that would vary it -- `counter(page)` -- resolves to 0 in every
+ * browser, because the page counter only exists inside `@page` margin boxes
+ * that none of them implement.
+ */
+.doc-print-page-number,
+.doc-print-tail {
+  display: none;
 }
 
 /* The measured spacer that pushes overflowing content onto the next page. At
@@ -332,12 +372,19 @@
   @page {
     size: letter;
     /*
-     * Vertical margins are the printer's, so the header and footer have room
-     * to sit in them. Horizontal margins stay 0 because the content keeps its
-     * own left/right padding -- a ruler dragged on screen then means the same
-     * thing on paper.
+     * Vertical margins are the printer's, so the running header and footer
+     * have room to sit in them. Horizontal margins stay 0 because the content
+     * keeps its own left/right padding -- a ruler dragged on screen then means
+     * the same thing on paper.
+     *
+     * The bottom margin is deliberately short of the inch the page geometry
+     * reserves. Text still stops at 864px because the spacers force the break
+     * there, so the printed margin still *looks* like an inch; the difference
+     * is a band inside the page area that the page number can occupy. It has
+     * to be inside: content that overflows into the `@page` margin is clipped
+     * away, which is exactly how the first attempt at this lost every number.
      */
-    margin: 1in 0;
+    margin: 1in 0 0.55in;
   }
 
   /*
@@ -370,9 +417,10 @@
     align-items: flex-start;
   }
 
+  /* Below the page number's band, which sits at the foot of the page area. */
   .doc-furniture--footer[data-page='0'] {
     top: auto;
-    bottom: -0.55in;
+    bottom: -0.42in;
     align-items: flex-end;
   }
 
@@ -388,22 +436,59 @@
    * the same word. A break driven by a manual page break node is left to the
    * node itself, so the two cannot both fire and skip a page.
    */
-  .ProseMirror [data-page-spacer='block'],
-  .ProseMirror [data-page-spacer='line'] {
-    height: 0 !important;
-    break-before: page;
-    page-break-before: always;
+  .ProseMirror [data-page-spacer],
+  .doc-print-tail {
+    /*
+     * Not the on-screen height. On paper `@page` supplies the margins and the
+     * sheet change, so the spacer only has to reach the foot of this page's
+     * text band -- which is what leaves the page number a place to sit.
+     */
+    height: var(--doc-print-fill, 0) !important;
+    position: relative;
+    display: block;
   }
 
-  .ProseMirror [data-page-spacer='explicit'] {
-    height: 0 !important;
+  .ProseMirror [data-page-spacer] {
+    break-after: page;
+    page-break-after: always;
   }
 
+  /* The marker itself prints as nothing; the spacer that follows it turns the
+     page, exactly as it does for an automatic break. */
   .ProseMirror [data-page-break] {
     height: 0;
     border: 0;
-    break-after: page;
-    page-break-after: always;
+  }
+
+  /*
+   * Below the text band, in the margin `@page` reserved. Chrome renders an
+   * absolutely positioned box that overflows there rather than clipping it,
+   * which is what makes a real per-page number possible at all.
+   */
+  .doc-print-page-number {
+    display: block;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding-top: 0.22in;
+    font-size: 10pt;
+    line-height: 1.2;
+    @apply font-doc text-ink;
+  }
+
+  .doc-print-tail {
+    display: block;
+  }
+
+  .doc-print-page-number[data-align='left'] {
+    text-align: left;
+  }
+  .doc-print-page-number[data-align='center'] {
+    text-align: center;
+  }
+  .doc-print-page-number[data-align='right'] {
+    text-align: right;
   }
 }
 
@@ -434,3 +519,78 @@
 .doc-furniture .ProseMirror {
   @apply text-[10pt] leading-snug;
 }
+
+/*
+ * A proposed AI edit, shown against the words it would replace.
+ *
+ * Written as plain CSS rather than inside `@layer components`: these class
+ * names only ever appear in a decoration built at runtime, so Tailwind's
+ * scanner never sees them in the source and would purge the rules from a
+ * production build.
+ */
+
+/* The student's own words, struck while the offer stands. Purely visual --
+   no `strike` mark is applied, so declining needs no undo. */
+.ai-preview-original {
+  text-decoration: line-through;
+  text-decoration-color: #d93025;
+  text-decoration-thickness: 1px;
+  color: #80868b;
+}
+
+.ai-preview {
+  position: relative;
+  display: block;
+  margin: 8px 0;
+  padding: 10px 12px 12px;
+  border: 1px solid #1a73e8;
+  border-left-width: 3px;
+  border-radius: 4px;
+  background: #e8f0fe;
+}
+
+/* The suggestion carries the note's own typography, so what is being offered
+   reads as the paragraph it would become rather than as chrome. */
+.ai-preview__body > :first-child { margin-top: 0; }
+.ai-preview__body > :last-child { margin-bottom: 0; }
+
+/*
+ * Floats over the top-right corner of the proposal: near the text it decides
+ * on, without displacing it or the paragraph below.
+ */
+.ai-preview__actions {
+  position: absolute;
+  top: -14px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px rgba(60, 64, 67, 0.15);
+}
+
+.ai-preview__button {
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 999px;
+  font-family: var(--font-ui, inherit);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ai-preview__button--accept {
+  background: #1a73e8;
+  color: #ffffff;
+}
+
+.ai-preview__button--accept:hover { background: #1765cc; }
+
+.ai-preview__button--decline {
+  background: transparent;
+  color: #444746;
+}
+
+.ai-preview__button--decline:hover { background: #e8eaed; }

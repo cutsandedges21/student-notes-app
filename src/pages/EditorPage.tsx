@@ -13,10 +13,12 @@ import { AiBubble } from '../editor/AiBubble'
 import { printNote } from '../editor/printDocument'
 import { US_LETTER, type PageGeometry } from '../editor/pagination/geometry'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
-import { markdownToHtml, isInlineSuggestion } from '../lib/markdown'
+import { markdownToHtml, isInlineSuggestion, escapeHtml } from '../lib/markdown'
+import { aiPreviewKey } from '../editor/aiPreview'
 import { describeDataError } from '../lib/dataErrors'
 import { matchAiShortcut } from '../lib/shortcuts'
 import { ShortcutsDialog } from '../components/ShortcutsDialog'
+import { LoadingScreen } from '../components/LoadingScreen'
 import { snapshotDocument } from '../services/documents'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
@@ -26,6 +28,7 @@ import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useMinimumVisible } from '../hooks/useMinimumVisible'
 import { createAutosaveScheduler } from '../lib/autosave'
 import { fetchClassBySlug } from '../services/classes'
 import {
@@ -39,6 +42,15 @@ import type { ClassRow, DocumentRow } from '../types/database'
 
 const AUTOSAVE_DELAY_MS = 1000
 
+/**
+ * How long the loading state stays up once shown.
+ *
+ * Long enough to read as a beat rather than a flicker, short enough not to
+ * be felt on every reload. It is a floor, not a delay: the note still appears
+ * the moment it is ready if it takes longer than this.
+ */
+const LOADING_HOLD_MS = 350
+
 interface DraftPayload {
   title: string
   content: JSONContent
@@ -46,7 +58,7 @@ interface DraftPayload {
 
 export default function EditorPage() {
   const { classSlug, noteSlug } = useParams<{ classSlug: string; noteSlug: string }>()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const online = useOnlineStatus()
   // Matches the `lg:` breakpoint the panel's own visibility classes use.
   const panelDocked = useMediaQuery('(min-width: 1024px)')
@@ -189,8 +201,22 @@ export default function EditorPage() {
     [persist],
   )
 
+  /** True once the session is known and the lookup has actually run. */
+  const settled = !authLoading && loaded
+  const showLoading = useMinimumVisible(!settled, LOADING_HOLD_MS)
+
   useEffect(() => {
     if (!classSlug || !noteSlug) return
+    /*
+     * Wait for the session before looking anything up.
+     *
+     * `userId` is null while Supabase is restoring the session, and the
+     * services read browser storage when it is null. Running the lookup then
+     * asks the guest store for a note that belongs to an account, finds
+     * nothing, and reports the note as missing -- which is why "This note
+     * isn't here" flashed on every reload before the real fetch replaced it.
+     */
+    if (authLoading) return
     let cancelled = false
 
     void (async () => {
@@ -228,7 +254,7 @@ export default function EditorPage() {
     return () => {
       cancelled = true
     }
-  }, [classSlug, noteSlug, userId])
+  }, [classSlug, noteSlug, userId, authLoading])
 
   // Save anything pending when leaving the page.
   useEffect(() => () => void scheduler.flush(), [scheduler])
@@ -360,6 +386,36 @@ export default function EditorPage() {
   }
 
   /**
+   * Offers a rewrite in the document, against the words it would replace.
+   *
+   * The offer lives entirely in decorations, so nothing here is saved: the
+   * original text stays exactly as written until Accept, and Decline is a
+   * no-op on the document rather than an undo. The suggestion also stays in
+   * the transcript either way, so declining in the note never loses it.
+   */
+  function handlePreviewSuggestion(content: string, target: AiSelection) {
+    if (!editor) return
+
+    editor.commands.showAiPreview({
+      from: target.from,
+      to: target.to,
+      html: isInlineSuggestion(content) ? escapeHtml(content) : markdownToHtml(content),
+      onAccept: () => {
+        // Read the mapped range back out: the note may have been edited while
+        // the offer stood, and the stored positions moved with it.
+        const live = aiPreviewKey.getState(editor.state)
+        const range = live ? { ...target, from: live.from, to: live.to } : target
+        editor.commands.clearAiPreview()
+        void handleApplySuggestion(content, range)
+      },
+      onDecline: () => {
+        editor.commands.clearAiPreview()
+        setSelection(null)
+      },
+    })
+  }
+
+  /**
    * Writes an accepted AI suggestion into the document.
    *
    * Snapshots the prior content first so an AI edit is always reversible, then
@@ -403,12 +459,23 @@ export default function EditorPage() {
   }
 
   /*
+   * Nothing is known about the note until the session is restored and the
+   * lookup has run. Checked before the missing-note branch below, so a note
+   * that has not been looked for yet is never reported as absent.
+   *
+   * `loaded` is deliberately never reset when the slug changes: moving between
+   * notes swaps the editor's content in place rather than remounting it, and
+   * dropping back to this screen would throw that away.
+   */
+  if (showLoading || !settled) return <LoadingScreen label="Loading note" />
+
+  /*
    * A note can be missing for ordinary reasons -- deleted in another tab, a
    * stale bookmark, or a link opened in a browser whose local notes live under
    * a different origin. Rendering nothing left a blank white page with no way
    * back, which reads as the app being broken.
    */
-  if (loaded && !doc) {
+  if (!doc) {
     return (
       <div className="grid min-h-full place-items-center px-6">
         <div className="text-center">
@@ -427,8 +494,6 @@ export default function EditorPage() {
       </div>
     )
   }
-
-  if (!doc) return null
 
   const displayState: SaveState = online ? saveState : 'offline'
 
@@ -514,6 +579,7 @@ export default function EditorPage() {
               pendingMode={pendingMode}
               onPendingHandled={() => setPendingMode(null)}
               onApply={(content, target) => void handleApplySuggestion(content, target)}
+              onPreview={handlePreviewSuggestion}
               active={panelDocked}
             />
           }
@@ -532,6 +598,7 @@ export default function EditorPage() {
           pendingMode={pendingMode}
           onPendingHandled={() => setPendingMode(null)}
           onApply={(content, target) => void handleApplySuggestion(content, target)}
+          onPreview={handlePreviewSuggestion}
           active={!panelDocked}
         />
       </AiDrawer>

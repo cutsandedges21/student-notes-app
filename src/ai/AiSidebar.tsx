@@ -6,10 +6,16 @@ import {
   AI_MODE_LABELS,
   AiRequestError,
   describeAiError,
+  type AiActionMode,
   type AiIssue,
   type AiMode,
   type AiResponse,
 } from '../types/ai'
+import {
+  AI_SHORTCUT_KEYS,
+  AI_SHORTCUT_ORDER,
+  describeSelectionNeeded,
+} from '../lib/shortcuts'
 import { cn } from '../lib/cn'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -37,9 +43,28 @@ interface AiSidebarProps {
   selection: AiSelection | null
   /** Runs when the student accepts a suggestion. */
   onApply: (content: string, selection: AiSelection | null) => void
-  /** Set by the editor page when a selection action is triggered from the document. */
-  pendingMode: { mode: AiMode; selection: AiSelection } | null
+  /**
+   * Offers a rewrite in the document itself, against the range it was asked
+   * about. The range travels with the suggestion rather than being read from
+   * the live selection at accept time: the student is free to click elsewhere
+   * while the model is thinking, and the offer has to keep meaning the words
+   * it was made about.
+   */
+  onPreview: (content: string, target: AiSelection) => void
+  /**
+   * Set by the editor page when an action is triggered from the document --
+   * the floating toolbar over a selection, or a Ctrl+Alt shortcut. The
+   * selection is nullable because a shortcut can fire with nothing highlighted,
+   * which is the case the assistant has to ask about rather than guess at.
+   */
+  pendingMode: { mode: AiMode; selection: AiSelection | null } | null
   onPendingHandled: () => void
+  /**
+   * False for the copy of this panel that is currently hidden by a breakpoint.
+   * Both copies are always mounted, so without this every pending action would
+   * be sent twice -- two API calls, two entries in the transcript.
+   */
+  active?: boolean
 }
 
 const newId = () => crypto.randomUUID()
@@ -49,8 +74,10 @@ export function AiSidebar({
   classId,
   selection,
   onApply,
+  onPreview,
   pendingMode,
   onPendingHandled,
+  active = true,
 }: AiSidebarProps) {
   const { session } = useAuth()
   const [turns, setTurns] = useState<Turn[]>([])
@@ -67,6 +94,7 @@ export function AiSidebar({
     label: string,
     call: () => Promise<AiResponse>,
     original?: string,
+    target?: AiSelection | null,
   ) {
     setError(null)
     setBusy(true)
@@ -78,6 +106,10 @@ export function AiSidebar({
         ...current,
         { id: newId(), role: 'assistant', content: result.response, result, original },
       ])
+
+      // A rewrite is shown in the note, next to the words it would replace.
+      // Modes that only explain or answer have nothing to put there.
+      if (result.proposed_content && target) onPreview(result.proposed_content, target)
     } catch (caught) {
       const code = caught instanceof AiRequestError ? caught.code : 'UPSTREAM_ERROR'
       setError(describeAiError(code))
@@ -88,32 +120,52 @@ export function AiSidebar({
     }
   }
 
-  // A selection action fired from the floating toolbar in the document.
-  useEffect(() => {
-    if (!pendingMode || busy) return
-
-    const { mode, selection: target } = pendingMode
+  /**
+   * The one path every suggested action takes, whether it came from a button
+   * here, the floating toolbar, or a keyboard shortcut.
+   *
+   * With nothing highlighted it asks which part of the notes to work on
+   * instead of running. These modes rewrite the student's own words, so acting
+   * on a guess -- the whole document, or wherever the caret happens to sit --
+   * produces an edit nobody asked for.
+   */
+  function startAction(mode: AiActionMode, target: AiSelection | null) {
     const action = AI_ACTIONS.find((entry) => entry.mode === mode)
-    onPendingHandled()
-
     if (!action) return
+
+    if (!target?.text.trim()) {
+      setError(null)
+      setTurns((current) => [
+        ...current,
+        { id: newId(), role: 'user', content: AI_MODE_LABELS[mode] },
+        { id: newId(), role: 'assistant', content: describeSelectionNeeded(mode) },
+      ])
+      return
+    }
+
+    const excerpt = `${target.text.slice(0, 60)}${target.text.length > 60 ? '…' : ''}`
     void run(
-      `${AI_MODE_LABELS[action.mode]} — “${target.text.slice(0, 60)}${target.text.length > 60 ? '…' : ''}”`,
+      `${AI_MODE_LABELS[mode]} — “${excerpt}”`,
       () => action.run({ documentId, classId, selectedText: target.text }),
       target.text,
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingMode])
-
-  function handleAction(mode: Exclude<AiMode, 'CHAT'>) {
-    const action = AI_ACTIONS.find((entry) => entry.mode === mode)!
-    const selectedText = selection?.text
-    void run(
-      AI_MODE_LABELS[mode],
-      () => action.run({ documentId, classId, selectedText }),
-      selectedText,
+      target,
     )
   }
+
+  // An action fired from the document: the floating selection toolbar, or a
+  // Ctrl+Alt shortcut.
+  useEffect(() => {
+    if (!active || !pendingMode || busy) return
+
+    const { mode, selection: target } = pendingMode
+    onPendingHandled()
+
+    // CHAT has no suggested-action button; it just opens the panel so the
+    // question box can be used against the selection.
+    if (mode === 'CHAT') return
+    startAction(mode, target)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingMode, active])
 
   function handleAsk(event: FormEvent) {
     event.preventDefault()
@@ -168,22 +220,27 @@ export function AiSidebar({
           <>
             <p className="text-sm text-ink-muted">What would you like help with?</p>
             <div className="mt-3 flex flex-col gap-1.5">
-              {AI_ACTIONS.map((action) => (
+              {AI_SHORTCUT_ORDER.map((mode) => (
                 <button
-                  key={action.mode}
+                  key={mode}
                   type="button"
-                  onClick={() => handleAction(action.mode)}
-                  className="rounded border border-line px-3 py-2 text-left text-sm text-ink transition-colors hover:border-line-strong hover:bg-surface-hover"
+                  onClick={() => startAction(mode, selection)}
+                  className="flex items-center justify-between gap-3 rounded border border-line px-3 py-2 text-left text-sm text-ink transition-colors hover:border-line-strong hover:bg-surface-hover"
                 >
-                  {AI_MODE_LABELS[action.mode]}
+                  {AI_MODE_LABELS[mode]}
+                  {/* The shortcut lives on the button so it is learned in
+                      passing, rather than only in the Tools dialog. */}
+                  <kbd className="shrink-0 rounded border border-line bg-surface-backdrop px-1.5 py-0.5 font-ui text-[11px] text-ink-faint">
+                    {AI_SHORTCUT_KEYS[mode]}
+                  </kbd>
                 </button>
               ))}
             </div>
-            {selection && (
-              <p className="mt-3 text-xs text-ink-faint">
-                Actions will use your selected text.
-              </p>
-            )}
+            <p className="mt-3 text-xs text-ink-faint">
+              {selection
+                ? 'Actions will use your selected text.'
+                : 'Highlight part of your notes first — these actions work on what you select.'}
+            </p>
           </>
         )}
 

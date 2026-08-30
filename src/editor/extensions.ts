@@ -13,6 +13,8 @@ import {
   LineHeight,
 } from '@tiptap/extension-text-style'
 import { Indent } from './indent'
+import { PageBreak } from './pagination/PageBreak'
+import { AiPreviewExtension } from './aiPreview'
 
 /**
  * The editor's extension set.
@@ -28,6 +30,12 @@ import { Indent } from './indent'
  *
  * Indent is ours: it backs the toolbar's indent buttons everywhere the list
  * commands don't apply.
+ *
+ * PageBreak is ours too. It lives here rather than beside the rest of the
+ * pagination engine because it is schema: every editor that might open a
+ * document containing one has to know the node type, including the read-only
+ * shared view, which runs no pagination of its own. The automatic breaks are
+ * not here -- those are measured decorations, never part of the document.
  */
 export const editorExtensions = [
   StarterKit.configure({
@@ -44,10 +52,12 @@ export const editorExtensions = [
   FontSize,
   LineHeight,
   Indent,
+  PageBreak,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Image.configure({ inline: false, HTMLAttributes: { class: 'doc-image' } }),
   TaskList,
   TaskItem.configure({ nested: true }),
   Placeholder.configure({ placeholder: 'Start typing your notes…' }),
+  AiPreviewExtension,
 ]
