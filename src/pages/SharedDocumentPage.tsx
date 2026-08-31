@@ -7,18 +7,23 @@ import { AppDocIcon } from '../editor/DocsIcons'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useFlushOnUnload } from '../hooks/useFlushOnUnload'
+import { useCollaboration } from '../collab/useCollaboration'
 import { createAutosaveScheduler } from '../lib/autosave'
 import {
   copySharedDocument,
   fetchSharedDocument,
+  redeemShareToken,
   saveSharedDocument,
   type SharedDocument,
 } from '../services/sharing'
 import { cn } from '../lib/cn'
 import { noteHref } from '../lib/noteRef'
 import { ConflictDialog } from '../components/ConflictDialog'
+import type { DocumentCollaboration } from '../editor/DocumentEditor'
 
 const AUTOSAVE_DELAY_MS = 1000
+
+const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
 
 interface DraftPayload {
   title: string
@@ -35,7 +40,7 @@ interface DraftPayload {
  */
 export default function SharedDocumentPage() {
   const { token } = useParams<{ token: string }>()
-  const { session, user } = useAuth()
+  const { session, user, profile } = useAuth()
   const navigate = useNavigate()
   const online = useOnlineStatus()
 
@@ -53,26 +58,113 @@ export default function SharedDocumentPage() {
   const isOwner = Boolean(user && shared && user.id === shared.owner_id)
   const canEdit = Boolean(shared && shared.share_mode === 'edit' && session)
 
+  const visitorId = user?.id ?? null
+
+  /*
+   * The other side of collaborative editing.
+   *
+   * The owner gets it through EditorPage; this is the page everyone they
+   * shared with actually lands on, so without it "collaboration" would mean
+   * the owner's own tabs agreeing with each other. Two people is the case the
+   * feature exists for.
+   *
+   * The conditions are the same ones EditorPage applies, and `canEdit` already
+   * carries both: the link is an edit link, and the visitor is signed in. A
+   * signed-out visitor stays on the read-only path -- which is not a UI
+   * nicety, it is what the database enforces anyway, since both
+   * redeem_share_token and update_shared_document refuse a null auth.uid().
+   *
+   * The grant this depends on was recorded by the redemption above, and it had
+   * to be: Realtime authorises the channel against document_access, not
+   * against the token in the address bar.
+   */
+  const collaboration = useCollaboration({
+    documentId: shared?.id ?? null,
+    userId: visitorId,
+    displayName: profile?.display_name || user?.email || 'Guest',
+    sharedForEditing: canEdit,
+    content: (shared?.content as JSONContent | undefined) ?? EMPTY_DOC,
+  })
+
+  // Yjs updates are debounced before being written, exactly like autosave, so
+  // the same "the tab is going away" signal has to reach both.
+  useFlushOnUnload(collaboration.flush)
+
+  /*
+   * Read inside `persist`, which is memoised and would otherwise close over
+   * whatever this was when the link first opened.
+   *
+   * Synced in an effect rather than assigned during render: writing a ref
+   * while rendering is the thing that makes a component's output depend on
+   * when it happened to run. The one render of lag is harmless here, because
+   * the only reader is a debounced save a second away, by which point effects
+   * have long since run.
+   */
+  const collaboratingRef = useRef(false)
   useEffect(() => {
-    if (!token) return
+    collaboratingRef.current = collaboration.active
+  }, [collaboration.active])
+
+  useEffect(() => {
+    const shareToken = token
+    if (!shareToken) return
     let cancelled = false
 
-    void fetchSharedDocument(token)
-      .then((row) => {
-        if (cancelled) return
-        setShared(row)
-        setTitle(row?.title ?? '')
-        versionRef.current = row?.version ?? 1
-      })
-      .catch((caught) => console.error('[SharedDocumentPage] failed to load:', caught))
-      .finally(() => {
-        if (!cancelled) setLoaded(true)
-      })
+    // An arrow expression rather than a hoisted `function` declaration: the
+    // latter is not narrowed by the guard above, since TypeScript cannot rule
+    // out its being called before it.
+    const open = async () => {
+      /*
+       * Two things happen on opening a link, and the redemption is the new one.
+       *
+       * Reading the note needs only the token. Joining the note's Realtime
+       * channel does not: Realtime authorises a subscription with RLS on
+       * realtime.messages, which sees a user and has no idea what link they
+       * followed. So a signed-in visitor's token has to become a row in
+       * document_access before the channel will have them, and that has to be
+       * done before anything tries to subscribe -- hence awaiting it here
+       * rather than firing it off beside the editor.
+       *
+       * Anonymous visitors are skipped entirely. redeem_share_token refuses a
+       * null auth.uid(), which is the same rule update_shared_document already
+       * enforces: an edit link is read-only until you sign in.
+       */
+      const [row] = await Promise.all([
+        fetchSharedDocument(shareToken).catch((caught) => {
+          console.error('[SharedDocumentPage] failed to load:', caught)
+          return null
+        }),
+        visitorId
+          ? redeemShareToken(shareToken).catch((caught) => {
+              /*
+               * A failed redemption is not a failed page. The note still opens
+               * and still saves, because both go through the token; only live
+               * collaboration would be missing. Reported to the console and
+               * nowhere else -- an on-screen message here would say "this
+               * token exists but something went wrong", which is exactly the
+               * distinction between a revoked link and a private note that
+               * the whole design refuses to leak.
+               */
+              console.error('[SharedDocumentPage] could not record access:', caught)
+              return null
+            })
+          : Promise.resolve(null),
+      ])
+
+      if (cancelled) return
+      setShared(row)
+      setTitle(row?.title ?? '')
+      versionRef.current = row?.version ?? 1
+      setLoaded(true)
+    }
+
+    void open()
+
 
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [token, visitorId])
 
   const persist = useCallback(
     async ({ title: nextTitle, content }: DraftPayload) => {
@@ -98,6 +190,20 @@ export default function SharedDocumentPage() {
            */
           const fresh = await fetchSharedDocument(token)
           if (fresh) {
+            /*
+             * While collaborating there is nothing to reconcile. Both writers
+             * are editing one Yjs document and each merely rewrites
+             * documents.content from it, so the versions racing is expected
+             * rather than a conflict -- and offering "use theirs" would push
+             * content into a Yjs-backed editor, duplicating it. Adopt the
+             * version and carry on.
+             */
+            if (collaboratingRef.current) {
+              versionRef.current = fresh.version
+              setSaveState('saved')
+              return
+            }
+
             setConflict(fresh)
             setSaveState('conflict')
             return
@@ -168,7 +274,13 @@ export default function SharedDocumentPage() {
     }
   }
 
-  if (!loaded) return null
+  /*
+   * `collaboration.pending` joins `loaded` because mounting the editor before
+   * the session is decided mounts the wrong one: a single-writer editor for a
+   * frame, whose keystrokes would land in a ProseMirror document about to be
+   * replaced by one seeded from content read a moment earlier.
+   */
+  if (!loaded || collaboration.pending) return null
 
   if (!shared) {
     return (
@@ -191,6 +303,24 @@ export default function SharedDocumentPage() {
 
   const displayState: SaveState =
     saveState === 'failed' ? 'failed' : online ? saveState : 'offline'
+
+  /*
+   * Plain constants rather than memoised values: this sits below the early
+   * returns above, where a hook cannot go. `editorCollaboration` changes
+   * identity when the channel drops, which is deliberate -- the presence bar
+   * has to re-render to say so -- while `collaborationKey` stays put.
+   */
+  const editorCollaboration: DocumentCollaboration | undefined =
+    collaboration.active && collaboration.ydoc && collaboration.provider && collaboration.user
+      ? {
+          ydoc: collaboration.ydoc,
+          provider: collaboration.provider,
+          user: collaboration.user,
+          connected: collaboration.connected,
+        }
+      : undefined
+
+  const collaborationKey = editorCollaboration ? `collab:${shared.id}` : 'solo'
 
   return (
     <div className="flex h-full flex-col">
@@ -265,6 +395,12 @@ export default function SharedDocumentPage() {
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <DocumentEditor
+          // Keyed on the session, not the note: turning collaboration on
+          // changes which extensions the editor was built with, and that is
+          // not something Tiptap can be asked to swap in place. The key holds
+          // still across a reconnect, so a dropped channel does not rebuild it.
+          key={collaborationKey}
+          collaboration={editorCollaboration}
           documentId={shared.id}
           version={shared.version}
           initialContent={shared.content as JSONContent}

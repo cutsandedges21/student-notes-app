@@ -23,24 +23,51 @@ export const SHARE_MODE_LABELS: Record<ShareMode, string> = {
 }
 
 /*
- * The edit hint says what the app actually does.
+ * The edit hint says what the app actually does, and only that.
  *
- * There is no collaborative editing yet -- no shared document state, no
- * presence, no merge. Two people typing at once are two people saving over one
- * row, and the second save is refused and has to be reconciled by hand. Saying
- * "anyone can edit" without saying that sets people up to lose work and blame
- * the app, so the limitation is stated where the mode is chosen rather than
- * discovered when it bites.
+ * It used to end "Best one person at a time -- if two people edit at once, the
+ * second is asked which version to keep", which was an accurate warning when a
+ * shared edit was one person saving a whole snapshot over another's. Editing a
+ * shared note now goes through a recorded grant rather than a bare token, and
+ * the concurrency story is no longer "second writer loses" -- so leaving that
+ * sentence up would be telling people not to do something the app supports.
+ *
+ * What replaces it is deliberately about access, not about merge mechanics.
+ * Two facts are enforced in the database and can be stated without hedging:
+ * an anonymous visitor on an edit link cannot write (update_shared_document
+ * and redeem_share_token both refuse a null auth.uid()), and a visitor who
+ * signs in becomes a row in document_access that the owner can see and delete.
+ * Anything stronger -- "changes merge live", "you will see their cursor" --
+ * depends on the editor wiring rather than on this layer, so it is not
+ * promised here. A share menu is the wrong place to find out that a guarantee
+ * was aspirational.
  */
 export const SHARE_MODE_HINTS: Record<ShareMode, string> = {
   private: 'Only you can open this note.',
   view: 'Anyone with the link can read it. Signing in is not required.',
-  edit: 'Anyone with the link can read it, and can change it once signed in. Best one person at a time — if two people edit at once, the second is asked which version to keep.',
+  edit: 'Anyone with the link can read it. Editing needs an account: a visitor who signs in is added to the list of people with access, and anyone who stays signed out can only read. Reset the link to take that access back.',
 }
 
 export interface ShareState {
   mode: ShareMode
   token: string
+  /** Whose note it is. Only the owner may see or revoke the access list. */
+  ownerId: string
+}
+
+/** What redeeming a share token recorded. */
+export interface ShareGrant {
+  documentId: string
+  mode: Exclude<ShareMode, 'private'>
+}
+
+/** One person a share link let in. */
+export interface DocumentAccessEntry {
+  userId: string
+  displayName: string
+  mode: Exclude<ShareMode, 'private'>
+  /** ISO timestamp of when the link was first redeemed. */
+  grantedAt: string
 }
 
 export interface SharedDocument {
@@ -60,14 +87,18 @@ export interface SharedDocument {
 export async function fetchShareState(documentId: string): Promise<ShareState | null> {
   const { data, error } = await supabase
     .from('documents')
-    .select('share_mode, share_token')
+    .select('share_mode, share_token, user_id')
     .eq('id', documentId)
     .maybeSingle()
 
   if (error) throw error
   if (!data) return null
 
-  return { mode: data.share_mode as ShareMode, token: data.share_token as string }
+  return {
+    mode: data.share_mode as ShareMode,
+    token: data.share_token as string,
+    ownerId: data.user_id as string,
+  }
 }
 
 export async function setShareMode(
@@ -84,6 +115,146 @@ export async function setShareMode(
 
 export function shareUrl(token: string): string {
   return `${window.location.origin}/shared/${token}`
+}
+
+/*
+ * Collapses concurrent redemptions of the same token into one request.
+ *
+ * Not the idempotency guarantee -- that lives in the database, where
+ * document_access is keyed on (document_id, user_id) and redeem_share_token
+ * inserts ON CONFLICT DO UPDATE, so redeeming the same link a hundred times
+ * leaves exactly one row. This map exists because React runs effects twice in
+ * StrictMode and a page can remount on any navigation, and two RPCs racing to
+ * upsert the same row is pointless traffic even when it is harmless.
+ *
+ * Only in-flight promises are held. A later visit re-asks the server, because
+ * the answer can legitimately change: the owner may have downgraded the link
+ * from edit to view, and the grant has to follow it down.
+ */
+const redemptionsInFlight = new Map<string, Promise<ShareGrant | null>>()
+
+/**
+ * Turns a share token into a durable grant in `document_access`.
+ *
+ * Why this exists at all: Realtime authorises a channel subscription with RLS
+ * on `realtime.messages`, which sees a user and knows nothing about the link
+ * they followed. A token in a URL cannot authorise a websocket, so the token
+ * has to become a recorded fact first.
+ *
+ * Returns null when the token is unknown, revoked, or points at a note that is
+ * no longer shared -- all three, identically. The function is SECURITY DEFINER
+ * and returns an empty set in every one of those cases, so there is nothing
+ * here for a caller to tell them apart by, and nothing should be added: a
+ * distinguishable "wrong token" reply is a free oracle for guessing tokens.
+ *
+ * Throws only on transport or auth failure (the RPC refuses a null auth.uid(),
+ * which is how an anonymous visitor stays read-only on an edit link).
+ */
+export function redeemShareToken(token: string): Promise<ShareGrant | null> {
+  const existing = redemptionsInFlight.get(token)
+  if (existing) return existing
+
+  const attempt = requestRedemption(token).finally(() => {
+    redemptionsInFlight.delete(token)
+  })
+
+  redemptionsInFlight.set(token, attempt)
+  return attempt
+}
+
+async function requestRedemption(token: string): Promise<ShareGrant | null> {
+  const { data, error } = await supabase.rpc('redeem_share_token', { p_token: token })
+
+  if (error) throw error
+
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { document_id: string; mode: string }
+    | undefined
+    | null
+
+  if (!row) return null
+  return { documentId: row.document_id, mode: row.mode as ShareGrant['mode'] }
+}
+
+/**
+ * Issues a fresh share token and destroys the grants the old one handed out.
+ *
+ * The audit item behind this: the token was generated once at insert and never
+ * changed, so turning sharing off and back on restored the identical secret
+ * URL and anyone who had ever seen it still had it. Rotation is the only thing
+ * that makes "stop sharing" mean stop.
+ *
+ * Returns the new token so the caller can show it immediately. Showing the old
+ * one after this call would be showing a URL that no longer resolves.
+ */
+export async function rotateShareToken(documentId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('rotate_share_token', {
+    p_document_id: documentId,
+  })
+
+  if (error) throw error
+  // The RPC raises when it matches no row, so a non-string here means the
+  // contract moved rather than that the caller lacked permission.
+  if (typeof data !== 'string') {
+    throw new Error('rotate_share_token returned no token')
+  }
+  return data
+}
+
+/**
+ * Everyone a share link has let into this note, oldest grant first.
+ *
+ * Goes through an RPC rather than selecting `document_access` directly only
+ * because names live in `profiles`, which is readable to its own row and no
+ * further. The function returns an empty list to anyone who is not the
+ * document's owner.
+ */
+export async function listDocumentAccess(
+  documentId: string,
+): Promise<DocumentAccessEntry[]> {
+  const { data, error } = await supabase.rpc('list_document_access', {
+    p_document_id: documentId,
+  })
+
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<{
+    user_id: string
+    display_name: string
+    mode: string
+    granted_at: string
+  }>
+
+  return rows.map((row) => ({
+    userId: row.user_id,
+    displayName: row.display_name,
+    mode: row.mode as DocumentAccessEntry['mode'],
+    grantedAt: row.granted_at,
+  }))
+}
+
+/**
+ * Removes one person's access without disturbing anyone else's.
+ *
+ * A plain delete, permitted by `document_access_delete_by_owner` and by
+ * nothing else, so the authorisation is the row-level policy rather than this
+ * function. Rotating the link is the blunt instrument; this is the scalpel.
+ *
+ * Their link still works, and will re-grant on the next visit -- the token is
+ * the credential, and this revokes the grant, not the credential. Reset the
+ * link when the intent is that they cannot come back.
+ */
+export async function revokeDocumentAccess(
+  documentId: string,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('document_access')
+    .delete()
+    .eq('document_id', documentId)
+    .eq('user_id', userId)
+
+  if (error) throw error
 }
 
 /** Readable by anyone holding the token, signed in or not. */

@@ -51,6 +51,27 @@ export interface DocumentRow {
    * the row and travels with it.
    */
   starred: boolean
+  /*
+   * Server-only columns.
+   *
+   * Optional because a guest row is a real DocumentRow that has never been
+   * near Postgres: notes written signed-out live in localStorage, cannot be
+   * shared, and have no CRDT behind them. Marking these optional says that
+   * plainly, rather than making the guest store mint fake tokens to satisfy a
+   * type. Every reader must therefore cope with their absence.
+   */
+  /** private | view | edit. Absent on guest rows, which cannot be shared. */
+  share_mode?: string
+  /** The unguessable half of a share link. Rotating it revokes the old one. */
+  share_token?: string
+  /**
+   * Compacted Yjs state for a collaboratively-edited note.
+   *
+   * Null until the first collaborative open seeds it from `content`. Never the
+   * thing the editor reads directly -- see src/collab/persistence.ts, which
+   * merges this with the update log.
+   */
+  ydoc?: string | null
   /** Optimistic-concurrency counter. See saveDocument(). */
   version: number
   created_at: string

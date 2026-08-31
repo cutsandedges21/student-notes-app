@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { JSONContent } from '@tiptap/react'
-import { DocumentEditor } from '../editor/DocumentEditor'
+import { DocumentEditor, type DocumentCollaboration } from '../editor/DocumentEditor'
+import { useCollaboration } from '../collab/useCollaboration'
 import {
   isPageNumberPosition,
   type PageNumberPosition,
@@ -66,9 +67,11 @@ interface DraftPayload {
   content: JSONContent
 }
 
+const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
+
 export default function EditorPage() {
   const { classSlug, noteRef } = useParams<{ classSlug: string; noteRef: string }>()
-  const { user, loading: authLoading } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   const online = useOnlineStatus()
   // Matches the `lg:` breakpoint the panel's own visibility classes use.
   const panelDocked = useMediaQuery('(min-width: 1024px)')
@@ -167,6 +170,41 @@ export default function EditorPage() {
   // it to the re-read remote content.
   const contentRef = useRef<JSONContent | null>(null)
 
+  /*
+   * Collaborative editing, on the owner's own copy of the note.
+   *
+   * Two conditions, and both are load-bearing:
+   *
+   * - Signed in. `userId` is null in guest mode, where there is no Supabase
+   *   client, no Realtime and no server to store a CRDT on. Nothing about
+   *   collaboration can work there and nothing about it is attempted.
+   * - Shared for editing. A private note is edited by exactly one person, and
+   *   converting every note in the project into a Yjs document to support a
+   *   case that cannot arise would be a migration with a duplicated-content
+   *   failure mode and no upside.
+   *
+   * Absent on a guest row, which is why the fallback is 'private' rather than
+   * an assertion: signed out there is no server to share from.
+   */
+  const shareMode = doc?.share_mode ?? 'private'
+
+  const collaboration = useCollaboration({
+    documentId: doc?.id ?? null,
+    userId,
+    displayName: profile?.display_name || user?.email || 'You',
+    sharedForEditing: shareMode === 'edit',
+    content: (doc?.content as JSONContent | undefined) ?? EMPTY_DOC,
+  })
+
+  // Read inside `persist`, which is memoised on `userId` and would otherwise
+  // close over whatever this was when the note first opened.
+  const collaboratingRef = useRef(false)
+  collaboratingRef.current = collaboration.active
+
+  // Yjs updates are debounced before being written, exactly like autosave, so
+  // the same "the tab is going away" signal has to reach both.
+  useFlushOnUnload(collaboration.flush)
+
   const persist = useCallback(
     async ({ title: nextTitle, content }: DraftPayload) => {
       const documentId = documentIdRef.current
@@ -197,6 +235,28 @@ export default function EditorPage() {
            */
           const fresh = await fetchDocument(userId, documentId)
           if (fresh) {
+            /*
+             * While collaborating there is nothing to reconcile, and asking
+             * would be wrong.
+             *
+             * Both writers are editing one Yjs document that has already
+             * merged their text; `documents.content` is a derived view of it
+             * that each of them rewrites on their own debounce. A version
+             * clash here means somebody else wrote that derived view a moment
+             * earlier -- not that two versions of the note exist. Putting the
+             * conflict dialog up would offer a choice between two copies of
+             * something identical, and "Use theirs" would then push content
+             * back into a Yjs-backed editor, which duplicates it.
+             *
+             * Adopting their counter is enough: the next save is built on the
+             * state everyone already agrees on.
+             */
+            if (collaboratingRef.current) {
+              versionRef.current = fresh.version
+              setSaveState('saved')
+              return
+            }
+
             setConflict(fresh)
             setSaveState('conflict')
             return
@@ -254,8 +314,18 @@ export default function EditorPage() {
     [persist],
   )
 
-  /** True once the session is known and the lookup has actually run. */
-  const settled = !authLoading && loaded
+  /**
+   * True once the session is known and the lookup has actually run.
+   *
+   * `collaboration.pending` joins them because opening the editor early is a
+   * way to lose work rather than a cosmetic wobble: a single-writer editor
+   * shown for the second it takes to load or seed the Yjs document accepts
+   * keystrokes into a ProseMirror document that is about to be replaced by one
+   * built from the content as it was read. Those characters would go nowhere.
+   * It is false immediately for guest mode and for private notes, so nothing
+   * that is not collaborative waits for anything.
+   */
+  const settled = !authLoading && loaded && !collaboration.pending
   const showLoading = useMinimumVisible(!settled, LOADING_HOLD_MS)
 
   useEffect(() => {
@@ -619,6 +689,27 @@ export default function EditorPage() {
   const displayState: SaveState =
     saveState === 'failed' ? 'failed' : online ? saveState : 'offline'
 
+  /*
+   * What the editor is handed, and what it is keyed on.
+   *
+   * Plain constants rather than memoised values: this sits below the early
+   * returns above, where a hook cannot go. `editorCollaboration` changes
+   * identity when the channel drops, which is deliberate -- the presence bar
+   * has to re-render to say so -- while `collaborationKey` stays put, so the
+   * editor itself is never rebuilt over a reconnect.
+   */
+  const editorCollaboration: DocumentCollaboration | undefined =
+    collaboration.active && collaboration.ydoc && collaboration.provider && collaboration.user
+      ? {
+          ydoc: collaboration.ydoc,
+          provider: collaboration.provider,
+          user: collaboration.user,
+          connected: collaboration.connected,
+        }
+      : undefined
+
+  const collaborationKey = editorCollaboration ? `collab:${doc.id}` : 'solo'
+
   /**
    * Keeps what is on screen and saves it over the newer stored version.
    *
@@ -710,6 +801,20 @@ export default function EditorPage() {
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <DocumentEditor
+          /*
+           * Keyed on the collaboration session rather than on the note.
+           *
+           * The editor's extension set decides who owns the document, and that
+           * cannot be swapped underneath a live ProseMirror view -- so turning
+           * collaboration on, or moving to a different collaborative note, has
+           * to build a new editor. The key is a constant for every
+           * non-collaborative note, which is what keeps the ordinary path
+           * exactly as it was: navigating between private notes still swaps the
+           * content in place rather than remounting, and guest mode never sees
+           * this value change at all.
+           */
+          key={collaborationKey}
+          collaboration={editorCollaboration}
           documentId={doc.id}
           version={doc.version}
           initialContent={doc.content as JSONContent}

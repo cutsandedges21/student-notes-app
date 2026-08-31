@@ -1,6 +1,12 @@
 import { EditorContent, useEditor, type Editor, type JSONContent } from '@tiptap/react'
+import type { Extensions } from '@tiptap/core'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
+import type * as Y from 'yjs'
 import type { AiSelection } from '../ai/AiSidebar'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { YjsProvider, ProviderUser } from '../collab/YjsProvider'
+import { PresenceBar } from '../components/PresenceBar'
 import { editorExtensions } from './extensions'
 import { FormattingToolbar } from './FormattingToolbar'
 import { PaginatedSheet } from './PaginatedSheet'
@@ -61,8 +67,47 @@ function zoneHTML(content: JSONContent): string {
   }
 }
 
+/**
+ * A live collaborative session, or absent for the single-writer path.
+ *
+ * Fixed for the lifetime of an instance. The extension set -- and with it the
+ * question of who owns the document's content -- is decided when the editor is
+ * created, so a caller that turns collaboration on has to remount this
+ * component rather than change the prop underneath it. `EditorPage` keys on the
+ * session for exactly that reason.
+ */
+export interface DocumentCollaboration {
+  ydoc: Y.Doc
+  provider: YjsProvider
+  user: ProviderUser
+  /** False means the channel dropped; the presence bar says so. */
+  connected: boolean
+}
+
+/**
+ * The same extensions, with StarterKit's undo history removed.
+ *
+ * Yjs brings its own (`yUndoPlugin`), and it has to be the only one. Two undo
+ * stacks over one document do not take turns: ProseMirror's history rolls back
+ * steps that Yjs has already merged with somebody else's, so Ctrl+Z stops
+ * meaning "undo what I did" and starts meaning "revert to a state neither of us
+ * was ever in" -- including, on a bad day, reinstating text a collaborator
+ * deleted. Configuring the existing StarterKit instance rather than rebuilding
+ * one keeps the rest of its options (headings, links) in a single place.
+ */
+function collaborativeExtensions(base: Extensions): Extensions {
+  return base.map((extension) =>
+    extension.name === 'starterKit' ? extension.configure({ undoRedo: false }) : extension,
+  )
+}
+
 interface DocumentEditorProps {
-  /** Initial content. Changes to this prop reload the editor document. */
+  /**
+   * Initial content, and the content pushed back in when the document changes.
+   *
+   * Ignored entirely while collaborating: the Yjs document is the source of
+   * truth then, and this is a derived copy of it.
+   */
   initialContent: JSONContent
   /** Identity of the loaded document; changing it swaps the editor content. */
   documentId: string
@@ -117,6 +162,8 @@ interface DocumentEditorProps {
   /** False puts the document into read-only view mode. */
   editable?: boolean
   onEditableChange?: (editable: boolean) => void
+  /** Present only when this note is being edited collaboratively. */
+  collaboration?: DocumentCollaboration
 }
 
 export function DocumentEditor({
@@ -140,6 +187,7 @@ export function DocumentEditor({
   pageNumbers = 'off',
   editable = true,
   onEditableChange,
+  collaboration,
 }: DocumentEditorProps) {
   const [margins, setMargins] = useState({ left: DEFAULT_MARGIN, right: DEFAULT_MARGIN })
   const [zoom, setZoom] = useState(1)
@@ -167,20 +215,63 @@ export function DocumentEditor({
     onGeometryChange?.(geometry)
   }, [geometry, onGeometryChange])
 
-  const extensions = useMemo(
-    () => [...editorExtensions, Pagination.configure({ controller })],
-    [controller],
-  )
+  /*
+   * Read once, deliberately.
+   *
+   * `collaboration` carries live connection state, so the object identity
+   * changes whenever the channel comes or goes. The extension set must not:
+   * rebuilding it would hand `useEditor` a different array and invite it to
+   * swap the schema out from under a live document. Only the two stable
+   * members are depended on.
+   */
+  const ydoc = collaboration?.ydoc ?? null
+  const provider = collaboration?.provider ?? null
+  const collaborating = ydoc !== null && provider !== null
+
+  const extensions = useMemo(() => {
+    const base = [...editorExtensions, Pagination.configure({ controller })]
+    if (!ydoc || !provider) return base
+
+    return [
+      ...collaborativeExtensions(base),
+      Collaboration.configure({ document: ydoc }),
+      // The caret extension only ever reads `provider.awareness`, which is a
+      // real y-protocols Awareness -- it does not care that this is not a
+      // Hocuspocus provider.
+      CollaborationCaret.configure({ provider, user: collaboration?.user }),
+    ]
+    // `collaboration.user` is read at creation only; a name arriving later is
+    // pushed through awareness by the hook rather than by rebuilding the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controller, ydoc, provider])
 
   const editor = useEditor({
     extensions,
-    content: initialContent,
+    /*
+     * No initial content while collaborating.
+     *
+     * The Yjs document already holds the note -- loaded from storage, or seeded
+     * from `documents.content` exactly once before this component was ever
+     * rendered. Passing content here as well inserts a second copy of every
+     * paragraph into the CRDT, where it merges rather than replaces, and the
+     * note is corrupted for everyone.
+     */
+    content: collaborating ? undefined : initialContent,
     editorProps: {
       attributes: {
         class: 'outline-none',
         'aria-label': 'Note content',
       },
     },
+    /*
+     * While collaborating this is what keeps `documents.content` current, and
+     * its meaning changes: the JSON stops being the document and becomes a
+     * derived view of the Yjs one. It is still written on every save because
+     * printing, search, the AI context layer, "Make a copy" and every
+     * non-collaborative reader read that column and nothing else -- but the
+     * CRDT is what is being edited, and a disagreement between the two is
+     * resolved in the CRDT's favour.
+     */
     onUpdate: ({ editor: instance }) => {
       onChange(instance.getJSON())
     },
@@ -252,9 +343,20 @@ export function DocumentEditor({
   // while the page's versionRef advanced, so the next keystroke would save
   // that local text over the newer content with a valid version -- silently
   // destroying the other writer's work.
+  //
+  // Never while collaborating. `setContent` replaces the ProseMirror document,
+  // and with the Yjs binding attached that replacement is applied to the CRDT
+  // as an insertion rather than as a swap -- so the note ends up holding its
+  // own text twice, on every screen, permanently. There is nothing to sync
+  // anyway: the version counter is not what a collaborative document is
+  // reconciled by, and `initialContent` is a snapshot derived from the CRDT
+  // this editor is already reading.
   useEffect(() => {
+    if (collaborating) return
     if (!editor) return
     editor.commands.setContent(initialContent, { emitUpdate: false })
+    // `collaborating` is fixed for the lifetime of the instance; see the note
+    // on DocumentCollaboration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, version, editor])
 
@@ -435,10 +537,24 @@ export function DocumentEditor({
             */}
             <div
               className={cn(
-                'pointer-events-none sticky top-[38px] z-20 -mt-2 mb-2 hidden justify-end',
+                'pointer-events-none sticky top-[38px] z-20 -mt-2 mb-2 justify-end gap-2',
                 fullScreen ? 'lg:hidden' : 'lg:flex',
+                // Who else is in the note is not desktop-only information: on a
+                // phone the row carries the presence bar even where the mode
+                // pill would normally be hidden.
+                collaborating ? 'flex' : 'hidden',
               )}
             >
+              {collaboration && (
+                <div className="pointer-events-auto flex items-center rounded-full border border-line bg-surface px-2 py-1 shadow-pill">
+                  <PresenceBar
+                    awareness={collaboration.provider.awareness}
+                    selfId={collaboration.user.id}
+                    connected={collaboration.connected}
+                  />
+                </div>
+              )}
+
               <div className="pointer-events-auto rounded-full border border-line bg-surface px-1 py-1 shadow-pill transition-colors hover:bg-docs-chrome-hover">
                 <ToolbarDropdown
                   label="Mode"

@@ -72,6 +72,25 @@ export const DOCUMENT_FIELD_PLAN: Record<keyof DocumentRow, FieldPlan> = {
   version: 'derive', // the copy starts its own optimistic-concurrency counter
   created_at: 'drop',
   updated_at: 'drop',
+  /*
+   * Sharing does not survive the move into an account, deliberately.
+   *
+   * A guest note has never been shared -- it lived in one browser and there
+   * was no server to share it from -- so there is nothing to carry. Even if
+   * there were, silently arriving with a live share link would be the wrong
+   * default: the account's owner should decide what is public, not inherit it.
+   * The destination row gets the column defaults, which are 'private' and a
+   * fresh token.
+   */
+  share_mode: 'drop',
+  share_token: 'drop',
+  /*
+   * No CRDT state to carry either, for the same reason: collaboration requires
+   * a backend the guest path does not have. The destination note is seeded
+   * from `content` on its first collaborative open, which is the same path
+   * every pre-existing note takes.
+   */
+  ydoc: 'drop',
 }
 
 /** Everything a destination document needs; one field per 'migrate' above. */

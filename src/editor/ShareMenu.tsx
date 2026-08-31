@@ -1,18 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { Check, ChevronDown, Link2 } from 'lucide-react'
+import { Check, ChevronDown, Link2, RotateCcw } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import {
   SHARE_MODE_HINTS,
   SHARE_MODE_LABELS,
   fetchShareState,
+  listDocumentAccess,
+  revokeDocumentAccess,
+  rotateShareToken,
   setShareMode,
   shareUrl,
+  type DocumentAccessEntry,
   type ShareMode,
 } from '../services/sharing'
+import { Button } from '../components/ui/Button'
+import { Dialog } from '../components/ui/Dialog'
 import { cn } from '../lib/cn'
 
 const MODES: ShareMode[] = ['private', 'view', 'edit']
+
+const ACCESS_MODE_LABELS: Record<DocumentAccessEntry['mode'], string> = {
+  view: 'Can view',
+  edit: 'Can edit',
+}
+
+function formatGrantedAt(iso: string): string {
+  const when = new Date(iso)
+  return Number.isNaN(when.getTime()) ? 'earlier' : when.toLocaleDateString()
+}
 
 /**
  * Share control.
@@ -20,15 +36,30 @@ const MODES: ShareMode[] = ['private', 'view', 'edit']
  * Sharing needs an account: the link points at a row in the database, so a
  * guest's browser-local note has nothing to share. Rather than failing after
  * the click, the menu says so and offers a way to sign in.
+ *
+ * Ownership is read rather than assumed. `documents_select_own` means
+ * fetchShareState only ever returns a row to the note's owner, but the access
+ * list is other people's names and the revoke button is destructive, so the
+ * component compares the row's user_id against the session instead of relying
+ * on where it happens to be mounted.
  */
 export function ShareMenu({ documentId }: { documentId: string }) {
   const { session } = useAuth()
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<ShareMode>('private')
   const [token, setToken] = useState<string | null>(null)
+  const [ownerId, setOwnerId] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [access, setAccess] = useState<DocumentAccessEntry[] | null>(null)
+  const [accessFailed, setAccessFailed] = useState(false)
+  const [revoking, setRevoking] = useState<string | null>(null)
+  const [confirmingReset, setConfirmingReset] = useState(false)
+  const [rotating, setRotating] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const isOwner = Boolean(session && ownerId && session.user.id === ownerId)
 
   useEffect(() => {
     if (!open || !session) return
@@ -39,6 +70,7 @@ export function ShareMenu({ documentId }: { documentId: string }) {
         if (cancelled || !state) return
         setMode(state.mode)
         setToken(state.token)
+        setOwnerId(state.ownerId)
       })
       .catch((caught) => console.error('[ShareMenu] failed to read share state:', caught))
 
@@ -47,6 +79,28 @@ export function ShareMenu({ documentId }: { documentId: string }) {
     }
   }, [open, session, documentId])
 
+  const loadAccess = useCallback(
+    () =>
+      listDocumentAccess(documentId)
+        .then((rows) => {
+          setAccess(rows)
+          setAccessFailed(false)
+        })
+        .catch((caught) => {
+          // Deliberately not rendered as an empty list: "nobody has access"
+          // and "we could not find out" are different answers, and only one of
+          // them makes the reset button unnecessary.
+          console.error('[ShareMenu] failed to read who has access:', caught)
+          setAccessFailed(true)
+        }),
+    [documentId],
+  )
+
+  useEffect(() => {
+    if (!open || !isOwner) return
+    void loadAccess()
+  }, [open, isOwner, loadAccess])
+
   useEffect(() => {
     if (!open) return
 
@@ -54,6 +108,9 @@ export function ShareMenu({ documentId }: { documentId: string }) {
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
     }
     function handleKeyDown(event: KeyboardEvent) {
+      // While the reset confirmation is up, Escape belongs to it. Closing the
+      // menu underneath would take the confirmation with it.
+      if (confirmingReset) return
       if (event.key === 'Escape') setOpen(false)
     }
 
@@ -63,7 +120,12 @@ export function ShareMenu({ documentId }: { documentId: string }) {
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [open])
+  }, [open, confirmingReset])
+
+  function flash(message: string) {
+    setNote(message)
+    window.setTimeout(() => setNote(null), 2000)
+  }
 
   async function choose(next: ShareMode) {
     setBusy(true)
@@ -82,11 +144,49 @@ export function ShareMenu({ documentId }: { documentId: string }) {
     if (!token) return
     try {
       await navigator.clipboard.writeText(shareUrl(token))
-      setNote('Link copied')
+      flash('Link copied')
     } catch {
-      setNote('Copy failed')
+      flash('Copy failed')
     }
-    window.setTimeout(() => setNote(null), 2000)
+  }
+
+  /**
+   * Rotates the token, then shows the token that came back.
+   *
+   * Showing the returned value rather than re-reading is the point: the old
+   * URL is dead the instant this resolves, and a menu still displaying it
+   * would be handing out an address that no longer opens anything.
+   */
+  async function resetLink() {
+    setRotating(true)
+    setResetError(null)
+    try {
+      const fresh = await rotateShareToken(documentId)
+      setToken(fresh)
+      setConfirmingReset(false)
+      flash('New link created')
+      // The grants the old link handed out are gone with it; re-read rather
+      // than assume, since the server decides what survived.
+      await loadAccess()
+    } catch (caught) {
+      console.error('[ShareMenu] failed to reset the link:', caught)
+      setResetError('Could not reset the link. The current link still works.')
+    } finally {
+      setRotating(false)
+    }
+  }
+
+  async function revoke(userId: string) {
+    setRevoking(userId)
+    try {
+      await revokeDocumentAccess(documentId, userId)
+      await loadAccess()
+    } catch (caught) {
+      console.error('[ShareMenu] failed to remove access:', caught)
+      flash('Could not remove access')
+    } finally {
+      setRevoking(null)
+    }
   }
 
   return (
@@ -168,27 +268,173 @@ export function ShareMenu({ documentId }: { documentId: string }) {
               ))}
 
               <div className="mt-1 border-t border-line pt-2">
-                <button
-                  type="button"
-                  onClick={() => void copy()}
-                  disabled={!token || mode === 'private'}
-                  title={
-                    mode === 'private'
-                      ? 'Choose an access level before copying a link'
-                      : 'Copy the share link'
-                  }
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded px-2 py-2 text-sm transition-colors',
-                    'text-accent hover:bg-surface-hover disabled:cursor-not-allowed disabled:text-ink-faint disabled:hover:bg-transparent',
-                  )}
-                >
-                  <Link2 size={15} />
-                  Copy link
-                </button>
+                {token && mode !== 'private' && (
+                  /*
+                   * The link itself, on screen.
+                   *
+                   * Not decoration: resetting it replaces the secret, and a
+                   * menu that only ever offered "Copy link" gave no way to
+                   * tell whether the clipboard now holds the new address or
+                   * the dead one.
+                   */
+                  <input
+                    readOnly
+                    aria-label="Share link"
+                    value={shareUrl(token)}
+                    onFocus={(event) => event.currentTarget.select()}
+                    className={cn(
+                      'mb-1 w-full rounded border border-line bg-surface-hover px-2 py-1.5',
+                      'font-mono text-xs text-ink-muted',
+                    )}
+                  />
+                )}
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void copy()}
+                    disabled={!token || mode === 'private'}
+                    title={
+                      mode === 'private'
+                        ? 'Choose an access level before copying a link'
+                        : 'Copy the share link'
+                    }
+                    className={cn(
+                      'flex flex-1 items-center gap-2 rounded px-2 py-2 text-sm transition-colors',
+                      'text-accent hover:bg-surface-hover disabled:cursor-not-allowed disabled:text-ink-faint disabled:hover:bg-transparent',
+                    )}
+                  >
+                    <Link2 size={15} />
+                    Copy link
+                  </button>
+
+                  {/*
+                    Enabled even while sharing is off, because that is the
+                    sequence the old behaviour broke: turning sharing off and
+                    on again restored the identical URL. Resetting it while
+                    private is how the owner makes sure it does not.
+                  */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetError(null)
+                      setConfirmingReset(true)
+                    }}
+                    disabled={!token}
+                    title="Create a new link and stop the current one working"
+                    className={cn(
+                      'flex items-center gap-2 rounded px-2 py-2 text-sm transition-colors',
+                      'text-ink-muted hover:bg-surface-hover hover:text-ink',
+                      'disabled:cursor-not-allowed disabled:text-ink-faint disabled:hover:bg-transparent',
+                    )}
+                  >
+                    <RotateCcw size={15} />
+                    Reset link
+                  </button>
+                </div>
               </div>
+
+              {isOwner && (
+                <div className="mt-1 border-t border-line pt-2">
+                  <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wide text-ink-faint">
+                    People with access
+                  </p>
+
+                  {accessFailed && (
+                    <p className="px-2 py-1 text-xs text-ink-muted">
+                      Couldn&rsquo;t load who has access.
+                    </p>
+                  )}
+
+                  {!accessFailed && access?.length === 0 && (
+                    <p className="px-2 py-1 text-xs text-ink-muted">
+                      Nobody has opened the link yet. Signing in through it is what
+                      puts somebody here.
+                    </p>
+                  )}
+
+                  {!accessFailed && access && access.length > 0 && (
+                    <ul>
+                      {access.map((entry) => (
+                        <li
+                          key={entry.userId}
+                          className="flex items-center gap-2 rounded px-2 py-1.5"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm text-ink">
+                              {entry.displayName}
+                            </span>
+                            <span className="block text-xs text-ink-muted">
+                              {ACCESS_MODE_LABELS[entry.mode]} &middot; since{' '}
+                              {formatGrantedAt(entry.grantedAt)}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void revoke(entry.userId)}
+                            disabled={revoking === entry.userId}
+                            aria-label={`Remove ${entry.displayName}`}
+                            className={cn(
+                              'shrink-0 rounded px-2 py-1 text-xs text-ink-muted transition-colors',
+                              'hover:bg-surface-hover hover:text-ink disabled:opacity-60',
+                            )}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
+      )}
+
+      {/*
+        Outside the `open &&` block on purpose: the confirmation has to survive
+        the menu closing underneath it, and it is inside the container so the
+        outside-click handler counts a click on the dialog as inside.
+      */}
+      {confirmingReset && (
+        <Dialog
+          open
+          onClose={() => {
+            if (!rotating) setConfirmingReset(false)
+          }}
+          title="Reset the share link?"
+        >
+          <p className="text-sm text-ink-muted">
+            This makes a new link and kills the current one. Everyone who has
+            opened the old link loses access straight away — including anyone
+            reading or editing it right now — and the old address stops working
+            for good.
+          </p>
+          <p className="mt-3 text-sm text-ink-muted">
+            Nothing in the note changes, and nobody&rsquo;s work is deleted. You
+            will need to send the new link to anyone who should still have it.
+          </p>
+
+          {resetError && (
+            <p role="alert" className="mt-3 text-sm text-red-600">
+              {resetError}
+            </p>
+          )}
+
+          <div className="mt-5 flex justify-end gap-2">
+            <Button onClick={() => setConfirmingReset(false)} disabled={rotating}>
+              Keep the current link
+            </Button>
+            <Button
+              variant="primary"
+              loading={rotating}
+              onClick={() => void resetLink()}
+            >
+              Reset link and remove everyone
+            </Button>
+          </div>
+        </Dialog>
       )}
     </div>
   )

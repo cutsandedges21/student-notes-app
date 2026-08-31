@@ -594,3 +594,65 @@
 }
 
 .ai-preview__button--decline:hover { background: #e8eaed; }
+
+/*
+ * Other people's carets and selections.
+ *
+ * Plain CSS for the same reason as the blocks above: these class names are
+ * created at runtime by @tiptap/extension-collaboration-caret and never appear
+ * as literal text in a .tsx file, so inside `@layer components` Tailwind's
+ * scanner would find no "content candidate" for them and purge the rules from
+ * the production build -- leaving invisible collaborators in the one build
+ * where it matters.
+ *
+ * The colour itself is set inline by the extension, from the user's awareness
+ * state. It is hashed from their user id (see useCollaboration), so a person
+ * keeps the same colour across reloads and on everyone else's screen.
+ */
+.collaboration-carets__caret {
+  position: relative;
+  /* Zero width so the caret sits between characters instead of displacing the
+     text every time somebody else moves. */
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+
+/*
+ * The name tag.
+ *
+ * Hidden until the caret is hovered or the document is: a permanent label over
+ * every collaborator's position covers the text they are writing, which is the
+ * text you are most likely trying to read.
+ */
+.collaboration-carets__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  padding: 1px 6px;
+  border-radius: 4px 4px 4px 0;
+  font-family: var(--font-ui, inherit);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: #ffffff;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.ProseMirror:hover .collaboration-carets__label,
+.collaboration-carets__caret:hover .collaboration-carets__label {
+  opacity: 1;
+}
+
+/* Their selection. The alpha comes from the extension's inline style, so the
+   text underneath stays readable through it. */
+.ProseMirror-yjs-selection {
+  border-radius: 2px;
+}

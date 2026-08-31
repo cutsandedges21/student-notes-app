@@ -1,7 +1,13 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DocumentEditor } from './DocumentEditor'
+import * as Y from 'yjs'
+import { getSchema, type Editor } from '@tiptap/core'
+import { DocumentEditor, type DocumentCollaboration } from './DocumentEditor'
+import { editorExtensions } from './extensions'
+import { YjsProvider, type ProviderUser } from '../collab/YjsProvider'
+import { MemoryBus, MemoryTransport } from '../collab/transport'
+import { COLLAB_FRAGMENT, encodeSeedUpdate } from '../collab/seed'
 
 /*
  * jsdom has no layout, so `Range` is missing the CSSOM View methods entirely.
@@ -393,6 +399,265 @@ describe('DocumentEditor', () => {
       )
 
       expect(tabbable).toHaveLength(1)
+    })
+  })
+
+  /*
+   * The collaborative path.
+   *
+   * What changes is not the chrome but who owns the document: the Yjs document
+   * does, and `initialContent` becomes a derived copy of it. The failure mode
+   * of getting that wrong is not a blank editor -- it is a note that quietly
+   * holds its own text twice, because pushing content into a Yjs-backed editor
+   * inserts rather than replaces.
+   */
+  describe('collaborative editing', () => {
+    const schema = getSchema(editorExtensions)
+    const live: YjsProvider[] = []
+
+    afterEach(async () => {
+      await Promise.all(live.splice(0).map((provider) => provider.destroy()))
+    })
+
+    const person = (id: string, name: string): ProviderUser => ({
+      id,
+      name,
+      color: '#1a73e8',
+    })
+
+    /** A Yjs document already holding `text`, joined to `bus`. */
+    async function session(
+      bus: MemoryBus,
+      text: string,
+      user = person('user-a', 'Ada Lovelace'),
+    ): Promise<DocumentCollaboration> {
+      const ydoc = new Y.Doc()
+      Y.applyUpdate(
+        ydoc,
+        encodeSeedUpdate(schema, {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+        }),
+      )
+
+      const provider = new YjsProvider({
+        doc: ydoc,
+        transport: new MemoryTransport(bus),
+        clientId: `${user.id}-${live.length}`,
+        user,
+      })
+      await provider.connect()
+      live.push(provider)
+
+      return { ydoc, provider, user, connected: true }
+    }
+
+    it('renders the note held in the Yjs document', async () => {
+      const collaboration = await session(new MemoryBus(), 'Written in the CRDT')
+
+      render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('Written in the CRDT')}
+          onChange={vi.fn()}
+          collaboration={collaboration}
+        />,
+      )
+
+      expect(screen.getByLabelText('Note content')).toHaveTextContent('Written in the CRDT')
+      // The rest of the editor is untouched by collaboration.
+      expect(screen.getByRole('toolbar', { name: 'Text formatting' })).toBeInTheDocument()
+    })
+
+    /*
+     * The single most damaging thing this component could do.
+     *
+     * `initialContent` is a snapshot of `documents.content`, which under
+     * collaboration is a derived view written on a debounce -- so it is
+     * routinely a little behind, and it describes the very same paragraphs the
+     * CRDT already holds. Calling `setContent` with it does not replace the
+     * document, because the Yjs binding turns the replacement into insertions:
+     * the note ends up holding everything twice, on every screen, permanently.
+     */
+    it('never pushes documents.content into a Yjs-backed editor', async () => {
+      const collaboration = await session(new MemoryBus(), 'Written in the CRDT')
+
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('A stale copy from documents.content')}
+          onChange={vi.fn()}
+          collaboration={collaboration}
+        />,
+      )
+
+      const body = screen.getByLabelText('Note content')
+      expect(body).toHaveTextContent('Written in the CRDT')
+      expect(body).not.toHaveTextContent('A stale copy')
+
+      // The version advancing is the trigger for the single-writer re-sync.
+      // Under collaboration it must do nothing at all.
+      rerender(
+        <DocumentEditor
+          documentId="doc-1"
+          version={2}
+          initialContent={paragraph('Written in the CRDT')}
+          onChange={vi.fn()}
+          collaboration={collaboration}
+        />,
+      )
+
+      expect(body).not.toHaveTextContent('A stale copy')
+      expect(body.textContent?.split('Written in the CRDT').length).toBe(2)
+      // The Yjs document itself is what everyone else reads; it has not grown.
+      const stored = collaboration.ydoc.getXmlFragment(COLLAB_FRAGMENT).toString()
+      expect(stored.split('Written in the CRDT').length).toBe(2)
+    })
+
+    it('shows a collaborator’s edit arriving', async () => {
+      const bus = new MemoryBus()
+      const mine = await session(bus, 'Shared paragraph.')
+      const theirs = await session(bus, 'Shared paragraph.', person('user-b', 'Grace Hopper'))
+
+      render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('Shared paragraph.')}
+          onChange={vi.fn()}
+          collaboration={mine}
+        />,
+      )
+
+      const fragment = theirs.ydoc.getXmlFragment(COLLAB_FRAGMENT)
+      const firstParagraph = fragment.get(0) as Y.XmlElement
+      ;(firstParagraph.get(0) as Y.XmlText).insert(17, ' Added by Grace.')
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Note content')).toHaveTextContent('Added by Grace.'),
+      )
+    })
+
+    it('puts the other people in the document on screen', async () => {
+      const bus = new MemoryBus()
+      const mine = await session(bus, 'Shared paragraph.')
+      await session(bus, 'Shared paragraph.', person('user-b', 'Grace Hopper'))
+
+      render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('Shared paragraph.')}
+          onChange={vi.fn()}
+          collaboration={mine}
+        />,
+      )
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('img', { name: 'Grace Hopper is editing this note' }),
+        ).toBeInTheDocument(),
+      )
+    })
+
+    it('says when the channel has dropped', async () => {
+      const collaboration = await session(new MemoryBus(), 'Shared paragraph.')
+
+      render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('Shared paragraph.')}
+          onChange={vi.fn()}
+          collaboration={{ ...collaboration, connected: false }}
+        />,
+      )
+
+      expect(screen.getByRole('status')).toHaveTextContent('Not syncing')
+    })
+
+    /*
+     * Yjs owns undo when it is present, and it has to own it alone. Two undo
+     * stacks over one document do not take turns: ProseMirror's history rolls
+     * back steps Yjs has already merged with somebody else's, so Ctrl+Z stops
+     * meaning "undo what I did" and can reinstate text a collaborator deleted.
+     */
+    it('runs one undo history, and it is Yjs’s', async () => {
+      const collaboration = await session(new MemoryBus(), 'Shared paragraph.')
+      const editors: (Editor | null)[] = []
+
+      render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('Shared paragraph.')}
+          onChange={vi.fn()}
+          onReady={(instance) => editors.push(instance)}
+          collaboration={collaboration}
+        />,
+      )
+
+      const editor = editors.find(Boolean)!
+      const names = editor.extensionManager.extensions.map((extension) => extension.name)
+
+      expect(names).toContain('collaboration')
+      expect(names).toContain('collaborationCaret')
+      // StarterKit's history, gone.
+      expect(names).not.toContain('undoRedo')
+    })
+
+    it('keeps StarterKit’s history on the single-writer path', () => {
+      const editors: (Editor | null)[] = []
+
+      render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('Just mine')}
+          onChange={vi.fn()}
+          onReady={(instance) => editors.push(instance)}
+        />,
+      )
+
+      const editor = editors.find(Boolean)!
+      const names = editor.extensionManager.extensions.map((extension) => extension.name)
+
+      expect(names).toContain('undoRedo')
+      expect(names).not.toContain('collaboration')
+    })
+
+    /*
+     * The guarantee guest mode depends on: with no session, nothing about this
+     * component changes. The E2E suite runs entirely signed out, so a
+     * regression here is a regression in the only path most people ever use.
+     */
+    it('leaves the single-writer path exactly as it was', () => {
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-1"
+          version={1}
+          initialContent={paragraph('First note')}
+          onChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByLabelText('Note content')).toHaveTextContent('First note')
+      // No presence chrome and no connection notice where there is no session.
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.queryByRole('list', { name: 'People editing this note' })).toBeNull()
+
+      rerender(
+        <DocumentEditor
+          documentId="doc-1"
+          version={2}
+          initialContent={paragraph('Newer content from another tab')}
+          onChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByLabelText('Note content')).toHaveTextContent(
+        'Newer content from another tab',
+      )
     })
   })
 })
