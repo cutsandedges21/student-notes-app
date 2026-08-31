@@ -8,7 +8,15 @@
  * tab. That difference is worth a distinct state, because the copy and the
  * urgency are different.
  */
-export type SaveState = 'idle' | 'saving' | 'saved' | 'offline' | 'error' | 'failed'
+export type SaveState =
+  | 'idle'
+  | 'saving'
+  | 'saved'
+  | 'offline'
+  | 'error'
+  | 'failed'
+  /** A newer version exists and the writer has not yet chosen between them. */
+  | 'conflict'
 
 const LABELS: Record<SaveState, string> = {
   idle: '',
@@ -17,6 +25,7 @@ const LABELS: Record<SaveState, string> = {
   offline: 'Offline',
   error: "Couldn't save",
   failed: 'Not saved',
+  conflict: 'Changed elsewhere',
 }
 
 export function SaveStatus({

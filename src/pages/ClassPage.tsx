@@ -7,6 +7,7 @@ import { fetchClassBySlug, updateClass } from '../services/classes'
 import { createDocument, fetchDocuments } from '../services/documents'
 import { formatRelativeTime } from '../lib/formatDate'
 import { describeDataError } from '../lib/dataErrors'
+import { noteHref } from '../lib/noteRef'
 import { MenuButton } from '../components/ui/MenuButton'
 import { RenameClassDialog } from '../components/RenameClassDialog'
 import { deleteClass } from '../services/classes'
@@ -53,7 +54,7 @@ export default function ClassPage() {
     setError(null)
     try {
       const doc = await createDocument(userId, klass.id)
-      navigate(`/classes/${klass.slug}/${doc.slug}`)
+      navigate(noteHref(klass.slug, doc.slug, doc.id))
     } catch (caught) {
       console.error('[ClassPage] failed to create note:', caught)
       setError(describeDataError(caught))
@@ -204,7 +205,7 @@ export default function ClassPage() {
             {documents.map((doc) => (
               <li key={doc.id} className="flex items-center gap-2">
                 <Link
-                  to={`/classes/${klass.slug}/${doc.slug}`}
+                  to={noteHref(klass.slug, doc.slug, doc.id)}
                   className="flex flex-1 items-center justify-between px-1 py-3 transition-colors hover:bg-surface-hover"
                 >
                   <span className="text-ink">{doc.title || 'Untitled note'}</span>

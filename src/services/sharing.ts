@@ -22,10 +22,20 @@ export const SHARE_MODE_LABELS: Record<ShareMode, string> = {
   edit: 'Anyone with the link can edit',
 }
 
+/*
+ * The edit hint says what the app actually does.
+ *
+ * There is no collaborative editing yet -- no shared document state, no
+ * presence, no merge. Two people typing at once are two people saving over one
+ * row, and the second save is refused and has to be reconciled by hand. Saying
+ * "anyone can edit" without saying that sets people up to lose work and blame
+ * the app, so the limitation is stated where the mode is chosen rather than
+ * discovered when it bites.
+ */
 export const SHARE_MODE_HINTS: Record<ShareMode, string> = {
   private: 'Only you can open this note.',
   view: 'Anyone with the link can read it. Signing in is not required.',
-  edit: 'Anyone with the link can read it. They must sign in to make changes.',
+  edit: 'Anyone with the link can read it, and can change it once signed in. Best one person at a time — if two people edit at once, the second is asked which version to keep.',
 }
 
 export interface ShareState {
@@ -188,7 +198,7 @@ export async function copySharedDocument(
   userId: string,
   shared: SharedDocument,
   options?: { destinationClassId?: string },
-): Promise<{ classSlug: string; noteSlug: string }> {
+): Promise<{ classSlug: string; noteSlug: string; noteId: string }> {
   const className = shared.class_name || 'Shared with me'
 
   const existing = options?.destinationClassId
@@ -222,8 +232,13 @@ export async function copySharedDocument(
     content,
     expectedVersion: copy.version,
     classId: classId!,
+    // The copy is brand new and its title was only just decided, so this is
+    // exactly the moment a slug should be derived. Autosave never asks.
+    reslug: true,
   })
 
   const saved = await fetchDocument(userId, copy.id)
-  return { classSlug: classSlug!, noteSlug: saved?.slug ?? copy.slug }
+  // The id is what the caller actually needs to link to; the slug rides along
+  // to keep the address readable.
+  return { classSlug: classSlug!, noteSlug: saved?.slug ?? copy.slug, noteId: copy.id }
 }

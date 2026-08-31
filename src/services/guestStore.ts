@@ -377,9 +377,20 @@ export function guestSaveDocument(params: {
   footer?: JSONContent
   pageNumbers?: string
   starred?: boolean
+  /** See documents.saveDocument: off on the autosave path, by design. */
+  reslug?: boolean
 }): SaveResult {
-  const { documentId, title, content, expectedVersion, header, footer, pageNumbers, starred } =
-    params
+  const {
+    documentId,
+    title,
+    content,
+    expectedVersion,
+    header,
+    footer,
+    pageNumbers,
+    starred,
+    reslug,
+  } = params
   const documents = read<DocumentRow>(DOCUMENTS_KEY)
   const index = documents.findIndex((row) => row.id === documentId)
 
@@ -397,11 +408,19 @@ export function guestSaveDocument(params: {
   const updated: DocumentRow = {
     ...current,
     title,
-    slug: uniqueSlug(
-      title || 'untitled',
-      documents.filter((row) => row.class_id === classId).map((row) => row.slug),
-      current.slug,
-    ),
+    // Mirrors the Supabase path: the slug only moves when asked. The note's
+    // address is its id, so a slug lagging behind the title costs nothing.
+    ...(reslug
+      ? {
+          slug: uniqueSlug(
+            title || 'untitled',
+            documents
+              .filter((row) => row.class_id === classId && row.id !== documentId)
+              .map((row) => row.slug),
+            current.slug,
+          ),
+        }
+      : {}),
     content,
     content_text: extractPlainText(content),
     ...(header ? { header } : {}),

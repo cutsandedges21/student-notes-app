@@ -165,8 +165,23 @@ export async function saveDocument(
     title: string
     content: JSONContent
     expectedVersion: number
-    /** Supply to keep the slug in step with the title. */
+    /**
+     * Where to re-slug within. Only consulted when `reslug` is set: the slug
+     * has to be unique inside the class, so regenerating one needs to know
+     * which class to check against.
+     */
     classId?: string
+    /**
+     * Regenerate the slug from the title.
+     *
+     * Off by default, and deliberately not something autosave asks for. Every
+     * save used to re-slug, which meant every keystroke in the title cost two
+     * extra round trips (read the row, list the class's slugs) and, worse,
+     * changed the note's address mid-sentence. The address is now anchored on
+     * the immutable id, so the slug is free to lag behind the title until
+     * something explicitly asks for it to catch up.
+     */
+    reslug?: boolean
     header?: JSONContent
     footer?: JSONContent
     pageNumbers?: string
@@ -191,12 +206,13 @@ export async function saveDocument(
     footer,
     pageNumbers,
     starred,
+    reslug,
   } = params
 
-  // Retitling re-slugs so the URL keeps matching the note. Only done when the
-  // caller passes classId, since the new slug has to be unique within it.
+  // Two extra round trips, so only taken when a caller has actually asked to
+  // move the note's readable name along -- never on the autosave path.
   let slugPatch: Record<string, string> = {}
-  if (classId) {
+  if (reslug && classId) {
     const current = await fetchDocument(userId, documentId)
     const nextSlug = uniqueSlug(
       title || 'untitled',

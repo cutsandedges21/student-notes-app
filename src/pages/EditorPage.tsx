@@ -22,6 +22,7 @@ import {
   type SuggestionTarget,
 } from '../editor/applySuggestion'
 import { describeDataError } from '../lib/dataErrors'
+import { noteHref, parseNoteRef } from '../lib/noteRef'
 import { matchAiShortcut } from '../lib/shortcuts'
 import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { LoadingScreen } from '../components/LoadingScreen'
@@ -31,6 +32,7 @@ import type { Editor } from '@tiptap/react'
 import { Pencil } from 'lucide-react'
 import { type SaveState } from '../components/SaveStatus'
 import { StorageNotice, type StorageFailure } from '../components/StorageNotice'
+import { ConflictDialog } from '../components/ConflictDialog'
 import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
@@ -64,7 +66,7 @@ interface DraftPayload {
 }
 
 export default function EditorPage() {
-  const { classSlug, noteSlug } = useParams<{ classSlug: string; noteSlug: string }>()
+  const { classSlug, noteRef } = useParams<{ classSlug: string; noteRef: string }>()
   const { user, loading: authLoading } = useAuth()
   const online = useOnlineStatus()
   // Matches the `lg:` breakpoint the panel's own visibility classes use.
@@ -86,6 +88,11 @@ export default function EditorPage() {
    * stay up until a write actually succeeds.
    */
   const [saveFailure, setSaveFailure] = useState<StorageFailure | null>(null)
+  /*
+   * The newer version somebody else saved, held until the writer chooses
+   * between it and their own. Non-null is what puts the conflict dialog up.
+   */
+  const [conflict, setConflict] = useState<DocumentRow | null>(null)
   // Closed by default: the panel is still a placeholder, and an empty 360px
   // column would crowd the formatting toolbar into a horizontal scroll.
   // Ctrl/Cmd+Shift+A and the AI button both open it.
@@ -152,7 +159,7 @@ export default function EditorPage() {
   const pageNumbersRef = useRef<PageNumberPosition>('off')
   const classIdRef = useRef<string | null>(null)
   const classSlugRef = useRef<string | undefined>(classSlug)
-  const slugRef = useRef<string | undefined>(noteSlug)
+  const slugRef = useRef<string | undefined>(undefined)
 
   // The latest editor content, so a title-only edit can still send the current
   // body. Declared before `persist` because the stale-save branch has to reset
@@ -177,19 +184,24 @@ export default function EditorPage() {
         })
 
         if (result.status === 'stale') {
-          // Another tab saved first. Re-read and adopt its content rather than
-          // clobbering it. Resetting contentRef matters as much as setDoc: it
-          // is what a later title-only edit sends as the body, so leaving the
-          // local content here would re-save the very content we just backed
-          // out of, defeating the staleness check.
+          /*
+           * Someone else saved first -- another tab, or another person on a
+           * shared link.
+           *
+           * This used to re-read the note and adopt the newer content, which
+           * silently deleted whatever the person in front of us had written
+           * since their last save, and then reported "Saved". Both versions
+           * are kept now and the choice is theirs. Nothing here touches the
+           * editor: their text stays exactly where it is until they answer.
+           */
           const fresh = await fetchDocument(userId, documentId)
           if (fresh) {
-            versionRef.current = fresh.version
-            contentRef.current = fresh.content as JSONContent
-            setDoc(fresh)
-            setTitle(fresh.title)
+            setConflict(fresh)
+            setSaveState('conflict')
+            return
           }
-          setSaveState('saved')
+          // The note is gone entirely, so there is nothing to reconcile with.
+          setSaveState('error')
           return
         }
 
@@ -211,20 +223,29 @@ export default function EditorPage() {
         versionRef.current = result.version
         setSaveState('saved')
 
-        // Retitling re-slugs the row, so the address bar has to follow or a
-        // reload would land on a slug that no longer exists. Replace rather
-        // than push: this is the same note, not a new entry in history.
-        const saved = await fetchDocument(userId, documentId)
-        if (saved && saved.slug !== slugRef.current) {
-          slugRef.current = saved.slug
-          navigate(`/classes/${classSlugRef.current}/${saved.slug}`, { replace: true })
-        }
+        /*
+         * Nothing else happens here, and that is the fix.
+         *
+         * This used to re-read the row after every save and, if the slug had
+         * moved, navigate to the new address. Since every save also re-slugged
+         * from the title, typing in the title box meant: save, re-read,
+         * navigate, re-run the load effect, re-read again, and push the
+         * reloaded content back into the editor -- which reset the caret and
+         * could overwrite characters typed in the meantime. Three round trips
+         * per keystroke burst, and a rename that ate text.
+         *
+         * The address carries the note's id now, so it stays valid whatever
+         * the title becomes, and the slug is no longer regenerated on this
+         * path at all. There is nothing left to keep in step.
+         */
       } catch (caught) {
         console.error('[EditorPage] save failed:', caught)
         setSaveState('error')
       }
     },
-    [userId, navigate],
+    // `navigate` is gone from here on purpose: saving no longer touches the
+    // address bar, so a new router instance must not rebuild the scheduler.
+    [userId],
   )
 
   const scheduler = useMemo(
@@ -237,7 +258,7 @@ export default function EditorPage() {
   const showLoading = useMinimumVisible(!settled, LOADING_HOLD_MS)
 
   useEffect(() => {
-    if (!classSlug || !noteSlug) return
+    if (!classSlug || !noteRef) return
     /*
      * Wait for the session before looking anything up.
      *
@@ -252,12 +273,24 @@ export default function EditorPage() {
 
     void (async () => {
       try {
-        // Class first: the note's slug is only unique inside it.
+        const { documentId, slug } = parseNoteRef(noteRef)
         const classRow = await fetchClassBySlug(userId, classSlug)
-        const docRow = classRow
-          ? await fetchDocumentBySlug(userId, classRow.id, noteSlug)
-          : null
+
+        /*
+         * The id is authoritative. The slug in the address is decoration and
+         * may be out of date, so it is only used to find the note when the
+         * address predates ids entirely -- an old bookmark, or a link someone
+         * shared before this shipped. Those still resolve, and are rewritten
+         * to the canonical address below.
+         */
+        const docRow = documentId
+          ? await fetchDocument(userId, documentId)
+          : classRow
+            ? await fetchDocumentBySlug(userId, classRow.id, slug)
+            : null
+
         if (cancelled) return
+
         setKlass(classRow)
         setDoc(docRow)
         documentIdRef.current = docRow?.id ?? null
@@ -276,6 +309,22 @@ export default function EditorPage() {
         setLoaded(true)
         setTitle(docRow?.title ?? '')
         versionRef.current = docRow?.version ?? 1
+
+        /*
+         * Put the canonical address in the bar once, on load.
+         *
+         * Covers a legacy slug-only link and a stale slug in front of a good
+         * id. Deliberately NOT re-run on save: the note is found by id, so the
+         * address never goes stale in a way that matters, and rewriting it
+         * mid-edit is exactly the navigation that used to reload the document
+         * out from under the writer.
+         */
+        const canonical = docRow
+          ? noteHref(classRow?.slug ?? classSlug, docRow.slug, docRow.id)
+          : null
+        if (canonical && canonical !== `/classes/${classSlug}/${noteRef}`) {
+          navigate(canonical, { replace: true })
+        }
       } catch (caught) {
         console.error('[EditorPage] failed to load document:', caught)
         if (!cancelled) setLoaded(true)
@@ -285,7 +334,7 @@ export default function EditorPage() {
     return () => {
       cancelled = true
     }
-  }, [classSlug, noteSlug, userId, authLoading])
+  }, [classSlug, noteRef, userId, authLoading, navigate])
 
   // Save anything pending when leaving the page.
   useEffect(() => () => void scheduler.flush(), [scheduler])
@@ -389,7 +438,7 @@ export default function EditorPage() {
     await scheduler.flush()
     try {
       const created = await createDocument(userId, klass.id)
-      navigate(`/classes/${klass.slug}/${created.slug}`)
+      navigate(noteHref(klass.slug, created.slug, created.id))
     } catch (caught) {
       console.error('[EditorPage] failed to create note:', caught)
       window.alert(describeDataError(caught))
@@ -567,6 +616,36 @@ export default function EditorPage() {
     saveState === 'failed' ? 'failed' : online ? saveState : 'offline'
 
   /**
+   * Keeps what is on screen and saves it over the newer stored version.
+   *
+   * Adopting the other side's version number is what makes the next save
+   * succeed: the write is conditional on it, and ours is now built on the
+   * state we have just been shown.
+   */
+  const keepMine = () => {
+    if (!conflict) return
+    versionRef.current = conflict.version
+    setConflict(null)
+    scheduleCurrent()
+    void scheduler.flush()
+  }
+
+  /** Discards the local edits and loads the version somebody else saved. */
+  const useTheirs = () => {
+    if (!conflict) return
+    versionRef.current = conflict.version
+    contentRef.current = conflict.content as JSONContent
+    headerRef.current = (conflict.header as JSONContent) ?? null
+    footerRef.current = (conflict.footer as JSONContent) ?? null
+    setTitle(conflict.title)
+    // Bumping `doc` re-runs DocumentEditor's content sync, which is what
+    // actually swaps the text in the editor.
+    setDoc(conflict)
+    setConflict(null)
+    setSaveState('saved')
+  }
+
+  /**
    * Re-runs the refused save with whatever the note holds now.
    *
    * Nothing is pending at this point -- the scheduler already ran and was
@@ -700,6 +779,12 @@ export default function EditorPage() {
           </div>
         </div>
       )}
+
+      <ConflictDialog
+        open={conflict !== null}
+        onKeepMine={keepMine}
+        onUseTheirs={useTheirs}
+      />
 
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 

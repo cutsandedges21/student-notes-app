@@ -32,8 +32,20 @@ export default function App() {
           <Route path="/upgrade" element={<UpgradePage />} />
           <Route path="/classes" element={<ClassesPage />} />
           <Route path="/classes/:classSlug" element={<ClassPage />} />
-          {/* Readable, and one segment shorter: /classes/biology-101/lecture-5 */}
-          <Route path="/classes/:classSlug/:noteSlug" element={<EditorPage />} />
+          {/*
+            /classes/biology-101/lecture-5--<id>
+
+            Readable, but addressed by the note's id: the slug in front of it
+            is decoration and may be stale. Renaming a note therefore cannot
+            change where it lives, which is what stopped a rename from
+            reloading the document out from under whoever was typing.
+
+            One segment, because the router matches whole segments -- the two
+            halves are separated in lib/noteRef. Slug-only addresses from
+            before this shipped still resolve, and are rewritten to the
+            canonical form on load.
+          */}
+          <Route path="/classes/:classSlug/:noteRef" element={<EditorPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

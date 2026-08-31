@@ -14,6 +14,8 @@ import {
   type SharedDocument,
 } from '../services/sharing'
 import { cn } from '../lib/cn'
+import { noteHref } from '../lib/noteRef'
+import { ConflictDialog } from '../components/ConflictDialog'
 
 const AUTOSAVE_DELAY_MS = 1000
 
@@ -42,6 +44,8 @@ export default function SharedDocumentPage() {
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [saveMessage, setSaveMessage] = useState<string | undefined>(undefined)
   const [copying, setCopying] = useState(false)
+  /* The newer version somebody else saved, pending the writer's choice. */
+  const [conflict, setConflict] = useState<SharedDocument | null>(null)
   const versionRef = useRef(1)
   const contentRef = useRef<JSONContent | null>(null)
 
@@ -82,14 +86,22 @@ export default function SharedDocumentPage() {
         })
 
         if (result.status === 'stale') {
+          /*
+           * The other side of "Anyone with the link can edit".
+           *
+           * Two people typing means one of them saves second and is refused.
+           * This used to answer that by loading the other person's version
+           * over the top, so whatever they had just written vanished with no
+           * message and the pill still said "Saved". Both versions are kept
+           * now and they choose; nothing here touches the editor.
+           */
           const fresh = await fetchSharedDocument(token)
           if (fresh) {
-            versionRef.current = fresh.version
-            contentRef.current = fresh.content as JSONContent
-            setShared(fresh)
-            setTitle(fresh.title)
+            setConflict(fresh)
+            setSaveState('conflict')
+            return
           }
-          setSaveState('saved')
+          setSaveState('error')
           return
         }
 
@@ -120,12 +132,32 @@ export default function SharedDocumentPage() {
 
   useEffect(() => () => void scheduler.flush(), [scheduler])
 
+  /** Keeps what is on screen and saves it over the newer stored version. */
+  const keepMine = () => {
+    if (!conflict) return
+    versionRef.current = conflict.version
+    setConflict(null)
+    scheduler.schedule({ title, content: contentRef.current ?? (conflict.content as JSONContent) })
+    void scheduler.flush()
+  }
+
+  /** Discards the local edits and loads the version somebody else saved. */
+  const useTheirs = () => {
+    if (!conflict) return
+    versionRef.current = conflict.version
+    contentRef.current = conflict.content as JSONContent
+    setTitle(conflict.title)
+    setShared(conflict)
+    setConflict(null)
+    setSaveState('saved')
+  }
+
   async function handleCopy() {
     if (!user || !shared) return
     setCopying(true)
     try {
-      const { classSlug, noteSlug } = await copySharedDocument(user.id, shared)
-      navigate(`/classes/${classSlug}/${noteSlug}`)
+      const { classSlug, noteSlug, noteId } = await copySharedDocument(user.id, shared)
+      navigate(noteHref(classSlug, noteSlug, noteId))
     } catch (caught) {
       console.error('[SharedDocumentPage] copy failed:', caught)
       setCopying(false)
@@ -212,7 +244,7 @@ export default function SharedDocumentPage() {
 
           {isOwner && (
             <Link
-              to={`/classes/${shared.class_slug}/${shared.slug}`}
+              to={noteHref(shared.class_slug, shared.slug, shared.id)}
               className="rounded-full bg-docs-chip px-4 py-2 font-ui text-sm font-medium text-docs-chip-text transition-colors hover:bg-docs-chip-hover"
             >
               Open in my notes
@@ -220,6 +252,12 @@ export default function SharedDocumentPage() {
           )}
         </div>
       </header>
+
+      <ConflictDialog
+        open={conflict !== null}
+        onKeepMine={keepMine}
+        onUseTheirs={useTheirs}
+      />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <DocumentEditor
