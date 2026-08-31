@@ -66,7 +66,33 @@ the newer option.
 
 ## Execution phases
 
-### Phase 0 — Stop data loss `IN PROGRESS`
+### Phase 0 — Stop data loss `DONE`
+
+All seven P0 defects fixed and covered by tests. **253 tests** (from 159), `tsc`
+clean, 9 lint warnings unchanged, production build green.
+
+| ID | Fix | Commit |
+| --- | --- | --- |
+| A1 | Anchored AI replacement; no whole-document fallback exists any more | `10ad704` |
+| A3 | Page furniture keyed on document identity | `10ad704` |
+| A5 | Deterministic destination class; id preferred over name | `b379383` |
+| A6 | Exhaustive field plan + per-account migration ledger | `b379383` |
+| A7 | Storage refusal is a distinct save result, surfaced with a recovery export | `b379383` |
+| A2 | Immutable-id addressing; a rename cannot reload the document | `998ee71` |
+| A4 | Re-slugging is opt-in; autosave is one round trip, not three | `998ee71` |
+| — | Stale saves no longer discard the writer's work | `998ee71` |
+
+Two notes for later phases:
+
+- **Caret position after navigation is untested.** jsdom cannot observe DOM focus
+  moved by Tiptap's `focus()` command, so the furniture test asserts on
+  `contenteditable` — the state it is actually about — and caret placement is
+  deferred to the Playwright suite in Phase 1.
+- **The conflict dialog is the honest stopgap, not the answer.** It exists because
+  there is no shared document state. Phase 2 replaces it for genuinely concurrent
+  editing; it should remain for the cross-tab case.
+
+### Phase 0 archive — original plan `DONE`
 
 No feature work begins until every item here is fixed **and covered by tests**.
 
