@@ -113,10 +113,47 @@ No feature work begins until every item here is fixed **and covered by tests**.
 Wave 2 deliberately follows Wave 1: δ refactors the orchestrator, and Wave 1's tests are
 the safety net that makes that refactor reviewable.
 
-### Phase 1 — Foundation `TODO`
-Supabase migrations + `config.toml`, CLI-based edge-function deployment, GitHub Actions
-CI (install → typecheck → lint → unit → build), real README, Playwright E2E harness,
-AI endpoint auth/rate-limit/quota, CORS allowlist, security headers.
+### Phase 1 — Foundation `DONE` (two items blocked, below)
+
+**290 unit tests** (from 253), **10 E2E**, `tsc` clean, 9 lint warnings unchanged,
+build green.
+
+| Item | Outcome |
+| --- | --- |
+| C1 migrations | 513-line `schema.sql` → 8 migrations, verified 91-for-91 statements. `schema.sql` deleted so there is one source of truth |
+| C2 config | `supabase/config.toml`, Postgres 17 to match the hosted project |
+| C3 deployment | Regex bundler and committed `_bundled.ts` deleted; the CLI deploys the real multi-file source |
+| C4 CI | Lint → typecheck → unit → build, plus a separate E2E job |
+| C5 README | Replaced the Vite template; states the known gaps plainly |
+| Security | CORS allowlist (was `*`), Postgres-enforced quota, request/output caps, Zod validation, security headers |
+| E2E | Playwright against a production build, signed out |
+
+**Found and fixed by the E2E suite on its first run:** autosave debounces 1s and
+React's unmount cleanup does not run on a browser reload, so anything typed in
+that window was lost. `useFlushOnUnload` closes it — a real guarantee for guest
+notes (synchronous localStorage), best effort for signed-in ones.
+
+**Also closed:** the caret-after-navigation assertion Phase 0 recorded as
+untestable in jsdom now runs in a real browser.
+
+#### Blocked — not done, not faked
+
+1. **Migrations are written but not applied.** `.env` points at Supabase project
+   `kttsiipsrrcfanrlkevj`, which is **not in the authenticated CLI account** —
+   `supabase projects list` returns four other projects, and the MCP sees a
+   fifth. The project is live (its REST endpoint answers 401, not 404), so this
+   is an access problem rather than a dead ref. Nothing has been applied, and
+   nothing should be until someone with access runs `npm run db:push`.
+2. **Migrations are unvalidated against a real Postgres.** `supabase start`
+   needs Docker; it is installed but the daemon is not running here. The
+   91-statement equivalence check is a structural proof, not an execution one.
+   `npm run db:reset` is the real test and has not been run.
+
+**CSP ships report-only, deliberately.** Enforcing it without driving the print
+path through a browser would ship an unverified change to printing — the kind
+that fails at a printer where nobody can diagnose it.
+`docs/security-headers.md` records what must happen to flip it, and the
+Playwright suite landing in this phase is what makes that possible.
 
 ### Phase 2 — Collaboration + comments `TODO`
 Collaboration first, comments second: comment anchors must survive concurrent edits.
