@@ -1,0 +1,15 @@
+{
+  "$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
+  "imports": {
+    "zod": "npm:zod@3.25.76"
+  },
+  "_comment": [
+    "Zod is imported by a bare specifier rather than 'npm:zod@...' inline so",
+    "the same module can be type-checked and unit-tested from Vitest, which",
+    "cannot resolve npm: specifiers. Deno resolves it through this map; Vitest",
+    "resolves it through node_modules, where the identical version is pinned as",
+    "a devDependency. Validation code that could not be tested is what let",
+    "confidence: 'banana' reach the UI, so being able to test it is the point.",
+    "Keep the version here and in package.json in step."
+  ]
+}

@@ -3,38 +3,32 @@
 // The only place the Gemini key exists. The browser calls this function with
 // its Supabase session; the key never leaves the server.
 //
-// Content is loaded here from the database rather than accepted from the
+// Note content is loaded here from the database rather than accepted from the
 // client. That keeps request payloads small and means a tampered client cannot
-// be used to pull another user's notes into a prompt -- the query is scoped to
-// the caller's own id, and RLS enforces it a second time.
+// pull another user's notes into a prompt -- the query is scoped to the
+// caller's own id, and RLS enforces it a second time.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { AI_PROMPT_VERSION, SYSTEM_PROMPT } from './prompts/studentAssistant.ts'
-import { buildAIContext, type ConversationTurn } from './context.ts'
+import { buildAIContext } from './context.ts'
+import { corsHeaders } from './cors.ts'
+import { LIMITS, parseAiResponse, requestSchema } from './validate.ts'
 
 // Overridable, because Google retires models on its own schedule: when this
-// default dies the fix is a secret, not a redeploy. `gemini-2.0-flash` was the
-// previous default and now returns 404 from the API.
+// default dies the fix is a secret, not a redeploy.
 const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.6-flash'
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
 const REQUEST_TIMEOUT_MS = 30_000
 
-const VALID_MODES = new Set([
-  'IMPROVE_NOTES',
-  'CHECK_NOTES',
-  'EXPLAIN',
-  'MAKE_CLEARER',
-  'EXAM_READY',
-  'CHAT',
-])
+/**
+ * Cap on generation, not just on what we accept afterwards.
+ *
+ * Validation rejecting an oversized response still means having paid for it.
+ * This is the limit that bounds cost.
+ */
+const MAX_OUTPUT_TOKENS = 8_192
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-}
-
-/** Shape Gemini must return. Enforced by the model, then re-checked here. */
+/** Shape Gemini must return. Enforced by the model, then re-checked by Zod. */
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -59,61 +53,26 @@ const RESPONSE_SCHEMA = {
   required: ['mode', 'response', 'issues', 'added_information'],
 }
 
-function fail(code: string, status: number): Response {
-  return new Response(JSON.stringify({ error: code }), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
-  })
-}
-
-/**
- * Validates Gemini's JSON by hand rather than trusting it.
- *
- * responseSchema makes malformed output unlikely, not impossible, and a
- * half-valid object reaching the UI would surface as a confusing render rather
- * than a clean error.
- */
-function parseAiResponse(raw: string, mode: string): Record<string, unknown> | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return null
-  }
-
-  if (typeof parsed !== 'object' || parsed === null) return null
-  const value = parsed as Record<string, unknown>
-
-  if (typeof value.response !== 'string') return null
-
-  const issues = Array.isArray(value.issues) ? value.issues : []
-  const validIssues = issues.filter((issue: unknown) => {
-    if (typeof issue !== 'object' || issue === null) return false
-    const i = issue as Record<string, unknown>
-    return (
-      typeof i.original === 'string' &&
-      typeof i.problem === 'string' &&
-      typeof i.correction === 'string'
-    )
-  })
-
-  return {
-    mode,
-    response: value.response,
-    proposed_content:
-      typeof value.proposed_content === 'string' && value.proposed_content.trim()
-        ? value.proposed_content
-        : null,
-    issues: validIssues,
-    added_information: Array.isArray(value.added_information)
-      ? value.added_information.filter((item: unknown) => typeof item === 'string')
-      : [],
-  }
-}
-
 Deno.serve(async (req: Request) => {
+  const origin = req.headers.get('Origin')
+  const CORS = corsHeaders(origin)
+
+  const fail = (code: string, status: number, extra: Record<string, unknown> = {}) =>
+    new Response(JSON.stringify({ error: code, ...extra }), {
+      status,
+      headers: { ...CORS, 'Content-Type': 'application/json' },
+    })
+
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return fail('BAD_REQUEST', 405)
+
+  // No Allow-Origin header means the origin is not on the list. Refusing here
+  // as well as in the headers means a non-browser caller gets the same answer
+  // a browser would enforce, rather than a working endpoint.
+  if (origin && !CORS['Access-Control-Allow-Origin']) {
+    console.warn('[ai-assist] blocked origin', origin)
+    return fail('FORBIDDEN_ORIGIN', 403)
+  }
 
   if (!GEMINI_API_KEY) {
     console.error('[ai-assist] GEMINI_API_KEY is not set')
@@ -122,6 +81,25 @@ Deno.serve(async (req: Request) => {
 
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return fail('UNAUTHORIZED', 401)
+
+  // Read the body with a cap before parsing it. Content-Length is a claim, so
+  // the actual bytes are measured too.
+  const declared = Number(req.headers.get('Content-Length') ?? '0')
+  if (declared > LIMITS.requestBytes) return fail('PAYLOAD_TOO_LARGE', 413)
+
+  const rawBody = await req.text()
+  if (rawBody.length > LIMITS.requestBytes) return fail('PAYLOAD_TOO_LARGE', 413)
+
+  let parsedBody: unknown
+  try {
+    parsedBody = JSON.parse(rawBody)
+  } catch {
+    return fail('BAD_REQUEST', 400)
+  }
+
+  const request = requestSchema.safeParse(parsedBody)
+  if (!request.success) return fail('BAD_REQUEST', 400)
+  const { mode, documentId, classId, selectedText, userRequest, conversation } = request.data
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -132,25 +110,6 @@ Deno.serve(async (req: Request) => {
   const { data: userData, error: userError } = await supabase.auth.getUser()
   if (userError || !userData.user) return fail('UNAUTHORIZED', 401)
   const userId = userData.user.id
-
-  let body: Record<string, unknown>
-  try {
-    body = await req.json()
-  } catch {
-    return fail('BAD_REQUEST', 400)
-  }
-
-  const mode = String(body.mode ?? '')
-  const documentId = String(body.documentId ?? '')
-  const classId = String(body.classId ?? '')
-
-  if (!VALID_MODES.has(mode) || !documentId || !classId) return fail('BAD_REQUEST', 400)
-
-  const selectedText = typeof body.selectedText === 'string' ? body.selectedText : undefined
-  const userRequest = typeof body.userRequest === 'string' ? body.userRequest : undefined
-  const conversation = Array.isArray(body.conversation)
-    ? (body.conversation as ConversationTurn[])
-    : []
 
   // Scoped to the caller; RLS enforces the same constraint independently.
   const [classResult, documentResult, siblingsResult] = await Promise.all([
@@ -174,7 +133,7 @@ Deno.serve(async (req: Request) => {
     return fail('UPSTREAM_ERROR', 500)
   }
 
-  if (!classResult.data || !documentResult.data) return fail('BAD_REQUEST', 404)
+  if (!classResult.data || !documentResult.data) return fail('NOT_FOUND', 404)
 
   const prompt = buildAIContext({
     mode,
@@ -187,21 +146,67 @@ Deno.serve(async (req: Request) => {
     currentDocumentId: documentId,
   })
 
+  /*
+   * Claim quota before spending money, not after.
+   *
+   * Enforced in Postgres because edge functions are scaled and cold-started --
+   * an in-process counter would limit one instance for as long as it happened
+   * to live. The claim also records prompt version and model against the
+   * request, so a behaviour change after a prompt edit is a query rather than
+   * a guess.
+   */
+  const { data: claimRows, error: claimError } = await supabase.rpc('claim_ai_request', {
+    p_mode: mode,
+    p_document_id: documentId,
+    p_prompt_version: AI_PROMPT_VERSION,
+    p_model: GEMINI_MODEL,
+    p_input_chars: prompt.length,
+  })
+
+  if (claimError) {
+    console.error('[ai-assist] quota claim failed', claimError)
+    return fail('UPSTREAM_ERROR', 500)
+  }
+
+  const claim = Array.isArray(claimRows) ? claimRows[0] : claimRows
+  if (!claim?.allowed) {
+    const reason = claim?.reason ?? 'rate_limited'
+    return fail(
+      reason === 'quota_exceeded' ? 'QUOTA_EXCEEDED' : 'RATE_LIMIT',
+      429,
+      { retryAfterSeconds: claim?.retry_after_seconds ?? 60 },
+    )
+  }
+
+  const requestId = claim.request_id as string
+  /** Best effort: accounting must never turn a good answer into an error. */
+  const close = async (outcome: string, outputChars: number) => {
+    const { error } = await supabase.rpc('complete_ai_request', {
+      p_request_id: requestId,
+      p_outcome: outcome,
+      p_output_chars: outputChars,
+    })
+    if (error) console.error('[ai-assist] failed to close out request', error)
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // The key travels in a header, not the query string. Query strings end
+        // up in proxy logs and error reports; headers are less likely to.
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
         signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.4,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
             responseMimeType: 'application/json',
             responseSchema: RESPONSE_SCHEMA,
           },
@@ -209,11 +214,15 @@ Deno.serve(async (req: Request) => {
       },
     )
 
-    if (geminiResponse.status === 429) return fail('RATE_LIMIT', 429)
+    if (geminiResponse.status === 429) {
+      await close('error', 0)
+      return fail('RATE_LIMIT', 429, { retryAfterSeconds: 60 })
+    }
 
     if (!geminiResponse.ok) {
       // Logged for developers; never surfaced to the student.
       console.error('[ai-assist] gemini error', geminiResponse.status, await geminiResponse.text())
+      await close('error', 0)
       return fail('UPSTREAM_ERROR', 502)
     }
 
@@ -229,24 +238,27 @@ Deno.serve(async (req: Request) => {
 
     if (typeof text !== 'string') {
       console.error('[ai-assist] unexpected gemini payload', JSON.stringify(payload).slice(0, 800))
+      await close('error', 0)
       return fail('INVALID_RESPONSE', 502)
     }
 
     const result = parseAiResponse(text, mode)
     if (!result) {
-      console.error('[ai-assist] unparsable model output', text.slice(0, 800))
+      console.error('[ai-assist] model output failed validation', text.slice(0, 800))
+      await close('refused', text.length)
       return fail('INVALID_RESPONSE', 502)
     }
 
-    console.log('[ai-assist] ok', { mode, promptVersion: AI_PROMPT_VERSION, userId })
+    await close('ok', text.length)
 
     return new Response(JSON.stringify(result), {
       headers: { ...CORS, 'Content-Type': 'application/json' },
     })
   } catch (error) {
-    if ((error as Error)?.name === 'AbortError') return fail('TIMEOUT', 504)
-    console.error('[ai-assist] unexpected failure', error)
-    return fail('UPSTREAM_ERROR', 500)
+    const aborted = (error as Error)?.name === 'AbortError'
+    if (!aborted) console.error('[ai-assist] unexpected failure', error)
+    await close('error', 0)
+    return aborted ? fail('TIMEOUT', 504) : fail('UPSTREAM_ERROR', 500)
   } finally {
     clearTimeout(timeout)
   }

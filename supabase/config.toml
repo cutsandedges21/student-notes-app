@@ -1,0 +1,68 @@
+# Local development stack.
+#
+# `npx supabase start` reads this. It describes the local stack only -- nothing
+# here configures a hosted project.
+
+project_id = "margin"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+# The app never asks for more than a class and its notes at once. A cap this
+# low turns an accidental unbounded select into an obvious truncation during
+# development rather than a slow page in production.
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# Match the hosted project (Postgres 17) so a migration that works locally is
+# not relying on behaviour the deployed database does not have.
+major_version = 17
+
+[db.migrations]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+
+# Catches outbound mail locally instead of sending it. Signup confirmation and
+# password reset both send real mail in production, so having somewhere to read
+# it without a mailbox is what makes those flows testable at all.
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# False locally only. Production requires confirmation -- the signup screen
+# tells people to go and confirm, and that copy has to be true there.
+enable_confirmations = false
+
+[analytics]
+enabled = false
+
+# The Gemini key is a secret, set with `supabase secrets set`, and must never
+# appear in this file or in any VITE_ variable. verify_jwt stays on: the
+# function checks the caller's session itself as well, but the platform
+# rejecting an unauthenticated request before it reaches our code is the
+# cheaper and more reliable of the two.
+[functions.ai-assist]
+verify_jwt = true
