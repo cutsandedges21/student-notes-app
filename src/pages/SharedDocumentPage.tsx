@@ -6,6 +6,7 @@ import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { AppDocIcon } from '../editor/DocsIcons'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useFlushOnUnload } from '../hooks/useFlushOnUnload'
 import { createAutosaveScheduler } from '../lib/autosave'
 import {
   copySharedDocument,
@@ -131,6 +132,9 @@ export default function SharedDocumentPage() {
   )
 
   useEffect(() => () => void scheduler.flush(), [scheduler])
+  // React's cleanup above covers moving between notes. A browser reload or a
+  // closed tab runs none of it, so the debounce window was a loss window.
+  useFlushOnUnload(scheduler.flush)
 
   /** Keeps what is on screen and saves it over the newer stored version. */
   const keepMine = () => {

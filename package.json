@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "functions:deploy": "supabase functions deploy ai-assist",
     "db:reset": "supabase db reset",
-    "db:push": "supabase db push"
+    "db:push": "supabase db push",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

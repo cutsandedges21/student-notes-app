@@ -38,6 +38,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useMinimumVisible } from '../hooks/useMinimumVisible'
+import { useFlushOnUnload } from '../hooks/useFlushOnUnload'
 import { createAutosaveScheduler } from '../lib/autosave'
 import { fetchClassBySlug } from '../services/classes'
 import {
@@ -338,6 +339,9 @@ export default function EditorPage() {
 
   // Save anything pending when leaving the page.
   useEffect(() => () => void scheduler.flush(), [scheduler])
+  // React's cleanup above covers moving between notes. A browser reload or a
+  // closed tab runs none of it, so the debounce window was a loss window.
+  useFlushOnUnload(scheduler.flush)
 
   useEffect(() => {
     if (!fullScreen) return
