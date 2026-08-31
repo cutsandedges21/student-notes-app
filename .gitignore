@@ -19,3 +19,6 @@ supabase/.temp/
 # Playwright output.
 test-results/
 playwright-report/
+
+# Generated single-file SQL bundle; migrations are the source of truth.
+supabase/.generated/

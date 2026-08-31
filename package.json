@@ -14,7 +14,8 @@
     "db:reset": "supabase db reset",
     "db:push": "supabase db push",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "db:bundle": "node scripts/bundle-sql.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
