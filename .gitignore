@@ -15,3 +15,7 @@ fonts/
 # Playwright MCP scratch output and Supabase CLI temp state.
 .playwright-mcp/
 supabase/.temp/
+
+# Playwright output.
+test-results/
+playwright-report/
