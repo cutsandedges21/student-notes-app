@@ -157,6 +157,29 @@ alter table public.documents
   check (page_numbers in ('off', 'left', 'center', 'right'));
 
 -- ----------------------------------------------------------------------------
+-- Starring.
+--
+-- Was a browser-local flag (localStorage `margin:starred:<id>`), which made it
+-- invisible on a second device and meant guest stars were dropped on the way
+-- into an account. Additive and defaulted, so existing rows come out unstarred
+-- and nothing that predates this column has to change.
+-- ----------------------------------------------------------------------------
+alter table public.documents
+  add column if not exists starred boolean not null default false;
+
+-- ----------------------------------------------------------------------------
+-- Class name lookup.
+--
+-- Deliberately NOT unique. `classes(user_id, name)` has never been unique and
+-- real accounts already hold duplicates (two terms of "Biology 101"), so a
+-- unique index here would fail to build against existing data. The index is
+-- plain, and code that resolves a class by name must pick deterministically
+-- rather than assume one row -- see copySharedDocument().
+-- ----------------------------------------------------------------------------
+create index if not exists classes_user_name_created_idx
+  on public.classes(user_id, name, created_at);
+
+-- ----------------------------------------------------------------------------
 -- document_versions
 --
 -- Lightweight snapshots, not a full version-history feature. A row is written

@@ -40,6 +40,7 @@ export default function SharedDocumentPage() {
   const [loaded, setLoaded] = useState(false)
   const [title, setTitle] = useState('')
   const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [saveMessage, setSaveMessage] = useState<string | undefined>(undefined)
   const [copying, setCopying] = useState(false)
   const versionRef = useRef(1)
   const contentRef = useRef<JSONContent | null>(null)
@@ -92,6 +93,16 @@ export default function SharedDocumentPage() {
           return
         }
 
+        // Shared saves go through Postgres, which throws rather than returning
+        // a refusal -- but the type admits one, and a save that did not happen
+        // must never read as "Saved" here either.
+        if (result.status === 'failed') {
+          setSaveMessage(result.message)
+          setSaveState('failed')
+          return
+        }
+
+        setSaveMessage(undefined)
         versionRef.current = result.version
         setSaveState('saved')
       } catch (caught) {
@@ -142,7 +153,8 @@ export default function SharedDocumentPage() {
     )
   }
 
-  const displayState: SaveState = online ? saveState : 'offline'
+  const displayState: SaveState =
+    saveState === 'failed' ? 'failed' : online ? saveState : 'offline'
 
   return (
     <div className="flex h-full flex-col">
@@ -161,7 +173,7 @@ export default function SharedDocumentPage() {
           </p>
         </div>
 
-        {canEdit && <SaveStatus state={displayState} />}
+        {canEdit && <SaveStatus state={displayState} message={saveMessage} />}
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
           {!session && (

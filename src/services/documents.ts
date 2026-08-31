@@ -10,11 +10,39 @@ import {
   guestFetchDocumentBySlug,
   guestFetchDocuments,
   guestSaveDocument,
+  type StorageFailureReason,
 } from './guestStore'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
 
-export type SaveResult = { status: 'saved'; version: number } | { status: 'stale' }
+/** Why a save never reached storage. Mirrors guestStore's StorageFailureReason. */
+export type SaveFailureReason = StorageFailureReason
+
+/**
+ * The outcome of a save.
+ *
+ * 'saved' and 'stale' are unchanged -- the editor's concurrency handling is
+ * built on them. 'failed' is new, and covers the case the guest path could not
+ * previously express: the write was refused by the browser, so nothing was
+ * persisted. Only the guest path returns it; Supabase failures throw.
+ */
+export type SaveResult =
+  | { status: 'saved'; version: number }
+  | { status: 'stale' }
+  | {
+      status: 'failed'
+      reason: SaveFailureReason
+      message: string
+      /**
+       * The version the note is STILL at, because nothing was written.
+       *
+       * Carried so a caller that tracks versions cannot drift a step ahead of
+       * what is actually stored. It is not a success signal: `status` is the
+       * only thing that says whether the save happened, and any caller that
+       * shows a "Saved" indicator must branch on it first.
+       */
+      version: number
+    }
 
 /**
  * Translates the row returned by a conditional update into a save outcome.
@@ -142,12 +170,28 @@ export async function saveDocument(
     header?: JSONContent
     footer?: JSONContent
     pageNumbers?: string
+    /**
+     * Only sent when supplied. `documents.starred` arrived after this app
+     * shipped, so a project that has not yet run supabase/schema.sql would
+     * reject the column; omitting it keeps every save that does not care about
+     * starring working against both schemas.
+     */
+    starred?: boolean
   },
 ): Promise<SaveResult> {
   if (!userId) return guestSaveDocument(params)
 
-  const { documentId, title, content, expectedVersion, classId, header, footer, pageNumbers } =
-    params
+  const {
+    documentId,
+    title,
+    content,
+    expectedVersion,
+    classId,
+    header,
+    footer,
+    pageNumbers,
+    starred,
+  } = params
 
   // Retitling re-slugs so the URL keeps matching the note. Only done when the
   // caller passes classId, since the new slug has to be unique within it.
@@ -172,6 +216,7 @@ export async function saveDocument(
       ...(header ? { header } : {}),
       ...(footer ? { footer } : {}),
       ...(pageNumbers ? { page_numbers: pageNumbers } : {}),
+      ...(starred === undefined ? {} : { starred }),
       version: expectedVersion + 1,
     })
     .eq('id', documentId)

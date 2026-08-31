@@ -110,26 +110,90 @@ export async function saveSharedDocument(params: {
   return { status: 'saved', version: data }
 }
 
+/** The fields needed to choose between same-named classes. */
+export interface ClassCandidate {
+  id: string
+  slug: string
+  created_at: string
+}
+
+/**
+ * Picks one class out of several sharing a name.
+ *
+ * `classes(user_id, name)` is not unique and cannot be made unique -- real
+ * accounts hold two terms of the same course -- so a name lookup can legally
+ * return more than one row. Oldest first, ties broken by id, which makes the
+ * choice stable across calls, devices and result orderings. Any total order
+ * would do; what matters is that repeated copies from the same share link
+ * land in the same place rather than scattering.
+ */
+export function pickDestinationClass(candidates: ClassCandidate[]): ClassCandidate | null {
+  if (candidates.length === 0) return null
+
+  return [...candidates].sort((a, b) => {
+    const byAge = a.created_at.localeCompare(b.created_at)
+    return byAge !== 0 ? byAge : a.id.localeCompare(b.id)
+  })[0]
+}
+
+/**
+ * Every class of this user with the given name, oldest first.
+ *
+ * Returns an array on purpose. The previous `.maybeSingle()` here raised
+ * PGRST116 the moment a second same-named class existed, which turned "Make a
+ * copy" into a button that simply failed for anyone who had ever taken a
+ * course twice.
+ */
+export async function findClassesByName(
+  userId: string,
+  name: string,
+): Promise<ClassCandidate[]> {
+  const { data, error } = await supabase
+    .from('classes')
+    .select('id, slug, created_at')
+    .eq('user_id', userId)
+    .eq('name', name)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as ClassCandidate[]
+}
+
+/** Resolve a class by its immutable id. Preferred whenever a caller has one. */
+export async function fetchClassCandidateById(
+  classId: string,
+): Promise<ClassCandidate | null> {
+  const { data, error } = await supabase
+    .from('classes')
+    .select('id, slug, created_at')
+    .eq('id', classId)
+    .maybeSingle()
+
+  if (error) throw error
+  return (data as ClassCandidate | null) ?? null
+}
+
 /**
  * Copies a shared note into the reader's own account.
  *
  * The copy lands in a class named after the original, created on first use, so
  * copies from one course stay together instead of piling into one bucket.
+ *
+ * `destinationClassId` short-circuits the name lookup entirely and is the
+ * preferred way in: a class id is immutable and unique, whereas a class name
+ * is neither. Callers that already know where the copy should go (a picker, a
+ * "copy again into the same class" affordance) should pass it.
  */
 export async function copySharedDocument(
   userId: string,
   shared: SharedDocument,
+  options?: { destinationClassId?: string },
 ): Promise<{ classSlug: string; noteSlug: string }> {
   const className = shared.class_name || 'Shared with me'
 
-  const { data: existing, error: findError } = await supabase
-    .from('classes')
-    .select('id, slug')
-    .eq('user_id', userId)
-    .eq('name', className)
-    .maybeSingle()
-
-  if (findError) throw findError
+  const existing = options?.destinationClassId
+    ? await fetchClassCandidateById(options.destinationClassId)
+    : pickDestinationClass(await findClassesByName(userId, className))
 
   let classId = existing?.id as string | undefined
   let classSlug = existing?.slug as string | undefined

@@ -23,6 +23,10 @@ interface DocsTitleBarProps {
   title: string
   onTitleChange: (title: string) => void
   saveState: SaveState
+  /** Why the last save failed, in the user's terms. Shown beside the state. */
+  saveMessage?: string
+  /** Offered when a save was refused, so the state is not a dead end. */
+  onRetrySave?: () => void
   /** Where the document icon navigates, i.e. the class this note belongs to. */
   backTo: string
   backLabel: string
@@ -70,6 +74,8 @@ export function DocsTitleBar({
   title,
   onTitleChange,
   saveState,
+  saveMessage,
+  onRetrySave,
   backTo,
   backLabel,
   menubar,
@@ -190,7 +196,7 @@ export function DocsTitleBar({
             />
           </button>
 
-          <SaveStatus state={saveState} />
+          <SaveStatus state={saveState} message={saveMessage} onRetry={onRetrySave} />
         </div>
 
       </div>

@@ -98,6 +98,258 @@ describe('DocumentEditor', () => {
     )
   })
 
+  /*
+   * Page furniture belongs to the document it was loaded for.
+   *
+   * `PageZone` owns its own Tiptap instance, and Tiptap's `content` option is
+   * initial content only -- a live instance never re-reads it. Because this
+   * component deliberately swaps the body in place rather than remounting when
+   * navigating between notes, an unkeyed zone kept note A's instance alive
+   * across the move to note B: B displayed A's header and footer, and the first
+   * keystroke inside B's header emitted A's text, which the page then saved
+   * onto B. Two notes, one header, and the wrong one wins.
+   */
+  describe('page furniture isolation', () => {
+    const zone = (text: string) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    })
+
+    const emptyZone = { type: 'doc', content: [{ type: 'paragraph' }] }
+
+    it('renders the header and footer of the loaded document', () => {
+      render(
+        <DocumentEditor
+          documentId="doc-a"
+          version={1}
+          initialContent={paragraph('Note A body')}
+          header={zone('Biology 101 — Unit 3')}
+          footer={zone('Prepared by Sam')}
+          onChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('Biology 101 — Unit 3')
+      expect(screen.getByLabelText('Footer content')).toHaveTextContent('Prepared by Sam')
+    })
+
+    it('does not show the previous note’s header or footer after navigating', () => {
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-a"
+          version={1}
+          initialContent={paragraph('Note A body')}
+          header={zone('Biology 101 — Unit 3')}
+          footer={zone('Prepared by Sam')}
+          onChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('Biology 101 — Unit 3')
+
+      rerender(
+        <DocumentEditor
+          documentId="doc-b"
+          version={1}
+          initialContent={paragraph('Note B body')}
+          header={zone('Chemistry — Term 2')}
+          footer={zone('Group project')}
+          onChange={vi.fn()}
+        />,
+      )
+
+      const header = screen.getByLabelText('Header content')
+      const footer = screen.getByLabelText('Footer content')
+
+      expect(header).toHaveTextContent('Chemistry — Term 2')
+      expect(footer).toHaveTextContent('Group project')
+      // The point of the test: not a trace of note A is left on the page.
+      expect(header).not.toHaveTextContent('Biology')
+      expect(footer).not.toHaveTextContent('Sam')
+      expect(document.body.textContent).not.toContain('Biology 101')
+      expect(document.body.textContent).not.toContain('Prepared by Sam')
+    })
+
+    // Loading is not an edit. A change reported here would be autosaved, which
+    // is how note A's header got written onto note B in the first place.
+    it('reports no furniture change while another note is being loaded', () => {
+      const onHeaderChange = vi.fn()
+      const onFooterChange = vi.fn()
+
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-a"
+          version={1}
+          initialContent={paragraph('Note A body')}
+          header={zone('Header A')}
+          footer={zone('Footer A')}
+          onHeaderChange={onHeaderChange}
+          onFooterChange={onFooterChange}
+          onChange={vi.fn()}
+        />,
+      )
+
+      rerender(
+        <DocumentEditor
+          documentId="doc-b"
+          version={1}
+          initialContent={paragraph('Note B body')}
+          header={zone('Header B')}
+          footer={zone('Footer B')}
+          onHeaderChange={onHeaderChange}
+          onFooterChange={onFooterChange}
+          onChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('Header B')
+      expect(onHeaderChange).not.toHaveBeenCalled()
+      expect(onFooterChange).not.toHaveBeenCalled()
+    })
+
+    it('sends an edit to the note on screen and never mutates the one left behind', async () => {
+      const headerA = zone('Header A')
+      const headerASnapshot = JSON.parse(JSON.stringify(headerA))
+      const onHeaderChange = vi.fn()
+
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-a"
+          version={1}
+          initialContent={paragraph('Note A body')}
+          header={headerA}
+          onHeaderChange={onHeaderChange}
+          onChange={vi.fn()}
+        />,
+      )
+
+      rerender(
+        <DocumentEditor
+          documentId="doc-b"
+          version={1}
+          initialContent={paragraph('Note B body')}
+          header={zone('Header B')}
+          onHeaderChange={onHeaderChange}
+          onChange={vi.fn()}
+        />,
+      )
+
+      await userEvent.dblClick(screen.getByLabelText('Header area'))
+      await userEvent.type(screen.getByLabelText('Header content'), '!')
+
+      expect(onHeaderChange).toHaveBeenCalled()
+      const emitted = JSON.stringify(onHeaderChange.mock.calls.at(-1)?.[0])
+      expect(emitted).toContain('Header B')
+      expect(emitted).not.toContain('Header A')
+
+      // The furniture handed in for note A is the page's own state object. A
+      // zone that wrote through to it would corrupt the note it came from.
+      expect(headerA).toEqual(headerASnapshot)
+    })
+
+    it('opens a note with no furniture empty, after one that had some', () => {
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-a"
+          version={1}
+          initialContent={paragraph('Note A body')}
+          header={zone('Header A')}
+          footer={zone('Footer A')}
+          onChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('Header A')
+
+      rerender(
+        <DocumentEditor
+          documentId="doc-b"
+          version={1}
+          initialContent={paragraph('Note B body')}
+          header={emptyZone}
+          footer={emptyZone}
+          onChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('')
+      expect(screen.getByLabelText('Footer content')).toHaveTextContent('')
+      expect(document.body.textContent).not.toContain('Header A')
+      expect(document.body.textContent).not.toContain('Footer A')
+    })
+
+    // The stale-save re-read path: the page adopts newer remote content under
+    // an unchanged id, so only the version moves. Furniture has to follow, or
+    // the next keystroke saves the local header over the other tab's newer one.
+    it('adopts newer remote furniture when only the version advances', () => {
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-a"
+          version={5}
+          initialContent={paragraph('Local unsaved edit')}
+          header={zone('Stale local header')}
+          footer={zone('Stale local footer')}
+          onChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('Stale local header')
+
+      rerender(
+        <DocumentEditor
+          documentId="doc-a"
+          version={6}
+          initialContent={paragraph('Newer content from another tab')}
+          header={zone('Newer remote header')}
+          footer={zone('Newer remote footer')}
+          onChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('Newer remote header')
+      expect(screen.getByLabelText('Footer content')).toHaveTextContent('Newer remote footer')
+      expect(document.body.textContent).not.toContain('Stale local')
+    })
+
+    /*
+     * The zone remounts underneath the writer on navigation. Remounting while
+     * the zone is still the active one would drop them inside a header of a
+     * note they never opened, and the next keystroke would land in it.
+     *
+     * Asserted through `contenteditable` rather than `toHaveFocus`. Being in a
+     * zone is what `contenteditable` reports -- `PageZone` calls
+     * `setEditable(active)` -- so it is the state this test is actually about.
+     * Caret placement is a second-order effect of it, and one jsdom cannot
+     * observe: Tiptap's `focus()` command moves the ProseMirror selection, but
+     * without layout jsdom never moves DOM focus with it. Where the caret
+     * physically lands after navigating belongs to an E2E test, not here.
+     */
+    it('does not leave the writer inside the new note’s header', async () => {
+      const { rerender } = render(
+        <DocumentEditor
+          documentId="doc-a"
+          version={1}
+          initialContent={paragraph('Note A body')}
+          header={zone('Header A')}
+          onChange={vi.fn()}
+        />,
+      )
+
+      await userEvent.dblClick(screen.getByLabelText('Header area'))
+      expect(screen.getByLabelText('Header content')).toHaveAttribute('contenteditable', 'true')
+
+      rerender(
+        <DocumentEditor
+          documentId="doc-b"
+          version={1}
+          initialContent={paragraph('Note B body')}
+          header={zone('Header B')}
+          onChange={vi.fn()}
+        />,
+      )
+
+      expect(screen.getByLabelText('Header content')).toHaveTextContent('Header B')
+      expect(screen.getByLabelText('Header content')).toHaveAttribute('contenteditable', 'false')
+    })
+  })
+
   // role="toolbar" promises assistive technology a single tab stop with arrow
   // navigation between controls. Without it the role misrepresents the widget.
   describe('toolbar keyboard navigation', () => {

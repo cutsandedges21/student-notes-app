@@ -30,6 +30,7 @@ import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
 import { Pencil } from 'lucide-react'
 import { type SaveState } from '../components/SaveStatus'
+import { StorageNotice, type StorageFailure } from '../components/StorageNotice'
 import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
@@ -76,6 +77,15 @@ export default function EditorPage() {
   const [doc, setDoc] = useState<DocumentRow | null>(null)
   const [title, setTitle] = useState('')
   const [saveState, setSaveState] = useState<SaveState>('idle')
+  /*
+   * Detail of the last refused write, for the guest path.
+   *
+   * Held apart from `saveState` because it outlives it: the status pill goes
+   * back to "Saving…" the moment the next keystroke schedules a save, but the
+   * browser is still not storing anything, so the notice explaining that has to
+   * stay up until a write actually succeeds.
+   */
+  const [saveFailure, setSaveFailure] = useState<StorageFailure | null>(null)
   // Closed by default: the panel is still a placeholder, and an empty 360px
   // column would crowd the formatting toolbar into a horizontal scroll.
   // Ctrl/Cmd+Shift+A and the AI button both open it.
@@ -183,6 +193,21 @@ export default function EditorPage() {
           return
         }
 
+        /*
+         * The browser refused to store the note -- quota, or storage disabled.
+         * Nothing was written, so the version must NOT advance: pretending it
+         * did would make the next save look like a fresh one built on a state
+         * that does not exist. Reported as its own state rather than as
+         * "Saved", which is what this used to say while the note existed
+         * nowhere but this tab.
+         */
+        if (result.status === 'failed') {
+          setSaveFailure({ reason: result.reason, message: result.message })
+          setSaveState('failed')
+          return
+        }
+
+        setSaveFailure(null)
         versionRef.current = result.version
         setSaveState('saved')
 
@@ -533,7 +558,25 @@ export default function EditorPage() {
     )
   }
 
-  const displayState: SaveState = online ? saveState : 'offline'
+  /*
+   * A refused write outranks being offline. Offline is a reason a save has not
+   * happened *yet*; failed means the browser will not store the note however
+   * long they wait, and that is the more urgent thing to say.
+   */
+  const displayState: SaveState =
+    saveState === 'failed' ? 'failed' : online ? saveState : 'offline'
+
+  /**
+   * Re-runs the refused save with whatever the note holds now.
+   *
+   * Nothing is pending at this point -- the scheduler already ran and was
+   * turned down -- so this queues the current content and flushes it straight
+   * away rather than waiting out the debounce the student just asked to skip.
+   */
+  const retrySave = () => {
+    scheduleCurrent()
+    void scheduler.flush()
+  }
 
   return (
     <div className="doc-shell flex h-full flex-col">
@@ -544,6 +587,8 @@ export default function EditorPage() {
             title={title}
             onTitleChange={handleTitleChange}
             saveState={displayState}
+            saveMessage={saveFailure?.message}
+            onRetrySave={saveFailure ? retrySave : undefined}
             backTo={`/classes/${klass?.slug ?? ''}`}
             backLabel={klass ? `Back to ${klass.name}` : 'Back to class'}
             aiOpen={sidebarOpen}
@@ -640,6 +685,21 @@ export default function EditorPage() {
           active={!panelDocked}
         />
       </AiDrawer>
+
+      {/*
+        Storage has refused a write, so the note lives only in this tab. The
+        pill in the title bar says so in two words; this is the part that tells
+        them what to do about it -- download a copy, or make an account. Pinned
+        rather than inline: they may be scrolled anywhere in a long note, and
+        this is not a message to discover later.
+      */}
+      {saveFailure && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4">
+          <div className="pointer-events-auto w-full max-w-lg [&>*]:mt-0">
+            <StorageNotice hasContent failure={saveFailure} />
+          </div>
+        </div>
+      )}
 
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 

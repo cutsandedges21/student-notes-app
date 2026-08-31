@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { migrateGuestData } from './migrateGuestData'
-import { guestCreateClass, guestCreateDocument, guestHasData } from './guestStore'
+import {
+  DOCUMENT_FIELD_PLAN,
+  migrateGuestData,
+  toMigrationDocument,
+} from './migrateGuestData'
+import {
+  guestCreateClass,
+  guestCreateDocument,
+  guestHasData,
+  guestSaveDocument,
+} from './guestStore'
 
 vi.mock('../lib/supabase', () => ({ supabase: {} }))
 
@@ -57,9 +66,78 @@ describe('migrateGuestData', () => {
 
     await migrateGuestData('user-1', { createClass, createDocument })
 
-    const [, title, content] = createDocument.mock.calls[0]
-    expect(title).toBe('Lecture 1')
-    expect(content).toEqual(doc.content)
+    const [, payload] = createDocument.mock.calls[0]
+    expect(payload.title).toBe('Lecture 1')
+    expect(payload.content).toEqual(doc.content)
+  })
+
+  /*
+   * The bug this guards: the migration carried a hand-written subset of columns
+   * and the subset fell behind the row. header, footer and page_numbers all
+   * shipped after it was written, and all three were silently dropped on the
+   * way into an account -- a student signed up and their page furniture was
+   * gone, with nothing reporting a failure.
+   */
+  it('carries every field the row plan marks as migrated', async () => {
+    const klass = guestCreateClass(input)
+    const doc = guestCreateDocument(klass.id, 'Lecture 1')
+
+    const header = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'BIO 101' }] }] }
+    const footer = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Sam' }] }] }
+    const content = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Mitochondria' }] }] }
+
+    const saved = guestSaveDocument({
+      documentId: doc.id,
+      title: 'Lecture 1 — revised',
+      content,
+      expectedVersion: doc.version,
+      header,
+      footer,
+      pageNumbers: 'right',
+      starred: true,
+    })
+    expect(saved.status).toBe('saved')
+
+    const createClass = vi.fn().mockResolvedValue({ id: 'remote-class-1' })
+    const createDocument = vi.fn().mockResolvedValue({ id: 'remote-doc' })
+
+    await migrateGuestData('user-1', { createClass, createDocument })
+
+    const [, payload] = createDocument.mock.calls[0]
+    expect(payload).toEqual({
+      title: 'Lecture 1 — revised',
+      content,
+      header,
+      footer,
+      pageNumbers: 'right',
+      starred: true,
+    })
+
+    // The class carries its own metadata, not just its name.
+    expect(createClass.mock.calls[0][1]).toEqual(input)
+  })
+
+  /*
+   * Every 'migrate' verdict in the plan must be represented in the payload
+   * builder, and every other verdict must be justified rather than forgotten.
+   * The Record type already forces a decision per column at compile time; this
+   * checks the runtime payload actually honours it.
+   */
+  it('builds a payload containing exactly the fields planned as migrated', () => {
+    const klass = guestCreateClass(input)
+    const doc = guestCreateDocument(klass.id, 'Lecture 1')
+
+    const planned = Object.entries(DOCUMENT_FIELD_PLAN)
+      .filter(([, verdict]) => verdict === 'migrate')
+      .map(([field]) => field)
+      .sort()
+
+    // page_numbers/starred are camelCased at the service boundary; compare on
+    // the set of concepts rather than on the destination's spelling.
+    const rename: Record<string, string> = { page_numbers: 'pageNumbers' }
+    const expected = planned.map((field) => rename[field] ?? field).sort()
+
+    expect(Object.keys(toMigrationDocument(doc)).sort()).toEqual(expected)
   })
 
   // The critical safety property: if the network dies halfway, the user's only
@@ -77,5 +155,69 @@ describe('migrateGuestData', () => {
     expect(result.migrated).toBe(false)
     expect('error' in result && result.error).toBeTruthy()
     expect(guestHasData()).toBe(true)
+  })
+
+  /*
+   * A retry after a partial failure used to run the whole migration again, so
+   * everything the first attempt managed to write arrived a second time. The
+   * ledger records each successful remote write against its local id; this is
+   * what proves the ledger is actually consulted.
+   */
+  it('resumes rather than duplicating when a failed migration is retried', async () => {
+    const klass = guestCreateClass(input)
+    guestCreateDocument(klass.id, 'Lecture 1')
+    guestCreateDocument(klass.id, 'Lecture 2')
+
+    const createClass = vi.fn().mockResolvedValue({ id: 'remote-class-1' })
+    // The first note lands; the second dies. The class and note one are now
+    // across, and the local copy is deliberately still there.
+    const failing = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'remote-doc-1' })
+      .mockRejectedValueOnce(new Error('network down'))
+
+    const first = await migrateGuestData('user-1', {
+      createClass,
+      createDocument: failing,
+    })
+    expect(first.migrated).toBe(false)
+    expect(guestHasData()).toBe(true)
+    expect(failing).toHaveBeenCalledTimes(2)
+
+    const retry = vi.fn().mockResolvedValue({ id: 'remote-doc-2' })
+    const second = await migrateGuestData('user-1', {
+      createClass,
+      createDocument: retry,
+    })
+
+    expect(second).toEqual({ migrated: true, classes: 1, documents: 2 })
+    // The class was created once, on the first attempt, and reused on the second.
+    expect(createClass).toHaveBeenCalledOnce()
+    // Only the note that never made it is written again.
+    expect(retry).toHaveBeenCalledOnce()
+    expect(retry.mock.calls[0][1].title).toBe('Lecture 2')
+    expect(guestHasData()).toBe(false)
+  })
+
+  // The ledger is keyed per account: migrating into a different account must
+  // not skip rows because a previous account already took them.
+  it('does not let one account’s ledger suppress another’s migration', async () => {
+    const klass = guestCreateClass(input)
+    guestCreateDocument(klass.id, 'Lecture 1')
+
+    const createClass = vi.fn().mockResolvedValue({ id: 'remote-class-1' })
+    const failing = vi.fn().mockRejectedValue(new Error('network down'))
+    await migrateGuestData('user-1', { createClass, createDocument: failing })
+
+    const other = vi.fn().mockResolvedValue({ id: 'remote-doc' })
+    const otherClass = vi.fn().mockResolvedValue({ id: 'remote-class-2' })
+    const result = await migrateGuestData('user-2', {
+      createClass: otherClass,
+      createDocument: other,
+    })
+
+    expect(result).toEqual({ migrated: true, classes: 1, documents: 1 })
+    expect(otherClass).toHaveBeenCalledOnce()
+    expect(other).toHaveBeenCalledOnce()
   })
 })

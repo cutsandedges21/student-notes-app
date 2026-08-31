@@ -102,6 +102,85 @@ describe('AiSidebar', () => {
     expect(onPendingHandled).not.toHaveBeenCalled()
   })
 
+  /*
+   * Where the destroy-the-note bug lived.
+   *
+   * "Fix this" used to call onApply(correction, null), and the page turned a
+   * null target into "replace the whole document". The panel must hand down an
+   * anchor of its own -- the student's wording, which the issue quotes back --
+   * and it must never be null, whatever is or is not selected.
+   */
+  describe('applying a flagged issue', () => {
+    const flagged: AiResponse = {
+      mode: 'CHECK_NOTES',
+      response: 'One thing to check.',
+      proposed_content: null,
+      issues: [
+        {
+          original: 'the chloroplast',
+          problem: 'Respiration happens in the mitochondrion.',
+          correction: 'the mitochondrion',
+          confidence: 'high',
+        },
+      ],
+      added_information: [],
+    }
+
+    // The prop is a union of sync and async returns, which a bare vi.fn() does
+    // not satisfy. Asserted at the boundary rather than typing every mock:
+    // what these tests care about is the arguments and the returned verdict.
+    type ApplyProp = React.ComponentProps<typeof AiSidebar>['onApply']
+
+    const runCheck = async (onApply: ReturnType<typeof vi.fn>) => {
+      improve.mockResolvedValue(flagged)
+      renderSidebar({
+        onApply: onApply as unknown as ApplyProp,
+        selection: null,
+        pendingMode: { mode: 'IMPROVE_NOTES', selection },
+      })
+      await screen.findByText('One thing to check.')
+      await userEvent.click(screen.getByRole('button', { name: 'Fix this' }))
+    }
+
+    it('anchors on the words the issue quoted, never on the live selection', async () => {
+      const onApply = vi.fn()
+      await runCheck(onApply)
+
+      expect(onApply).toHaveBeenCalledTimes(1)
+      const [content, target] = onApply.mock.calls[0]
+      expect(content).toBe('the mitochondrion')
+      expect(target).toBeTruthy()
+      expect(target.text).toBe('the chloroplast')
+    })
+
+    // A refusal that shows nothing is indistinguishable from a broken button.
+    it('shows why an edit could not be placed, and keeps the transcript', async () => {
+      const onApply = vi.fn().mockResolvedValue({
+        status: 'refused',
+        reason: 'ambiguous',
+        message: 'That text appears 3 times in your notes.',
+      })
+      await runCheck(onApply)
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('That text appears 3 times in your notes.')
+      // The answer that produced the suggestion is still there to act on.
+      expect(screen.getByText('One thing to check.')).toBeInTheDocument()
+    })
+
+    it('says nothing when the edit lands', async () => {
+      const onApply = vi.fn().mockResolvedValue({
+        status: 'applied',
+        from: 1,
+        to: 15,
+        source: 'text',
+      })
+      await runCheck(onApply)
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+  })
+
   it('shows each action with its shortcut', () => {
     renderSidebar()
 

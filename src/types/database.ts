@@ -41,6 +41,16 @@ export interface DocumentRow {
   footer: unknown
   /** Where the page number sits in the footer: off | left | center | right. */
   page_numbers: string
+  /**
+   * Starred by its owner.
+   *
+   * Previously a browser-local bookmark written straight to
+   * `margin:starred:<documentId>` by the title bar, which meant a star set on
+   * a laptop was invisible on a phone and was silently discarded when guest
+   * work moved into an account. It is a property of the note, so it lives on
+   * the row and travels with it.
+   */
+  starred: boolean
   /** Optimistic-concurrency counter. See saveDocument(). */
   version: number
   created_at: string
