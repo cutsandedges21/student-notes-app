@@ -40,6 +40,13 @@ import type { CommentRange } from '../editor/commentHighlight'
 const RESOLVE_DELAY_MS = 400
 
 export interface UseCommentsOptions {
+  /**
+   * Empty while the note is still loading.
+   *
+   * This hook is called before the page knows which note it is showing,
+   * because hooks cannot be called conditionally -- so it has to be a no-op
+   * until an id arrives rather than assume one.
+   */
   documentId: string
   userId: string | null
   editor: Editor | null
@@ -120,7 +127,7 @@ export function useComments({
   const [docRevision, setDocRevision] = useState(0)
   const [draft, setDraft] = useState<CommentAnchor | null>(null)
 
-  const enabled = Boolean(userId) && isSupabaseConfigured
+  const enabled = Boolean(userId) && Boolean(documentId) && isSupabaseConfigured
 
   const load = useCallback(async () => {
     if (!enabled) return

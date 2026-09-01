@@ -35,6 +35,12 @@ interface FormattingToolbarProps {
   onAddComment?: () => void
   /** False with nothing selected: there would be nothing to anchor to. */
   canAddComment?: boolean
+  /** Opens the link dialog; the toolbar no longer prompts. */
+  onEditLink?: () => void
+  /** Opens the image dialog. */
+  onInsertImage?: () => void
+  /** Opens the find-and-replace panel. */
+  onFind?: () => void
 }
 
 /**
@@ -198,6 +204,9 @@ export function FormattingToolbar({
   onPrint,
   onAddComment,
   canAddComment = false,
+  onEditLink,
+  onInsertImage,
+  onFind,
 }: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
@@ -456,7 +465,7 @@ export function FormattingToolbar({
             disabled={!state.canRedo}
             onClick={() => editor.chain().focus().redo().run()}
           />
-          <ToolButton label="Find in document" icon={Search} onClick={findInDocument} />
+          <ToolButton label="Find and replace" icon={Search} onClick={onFind ?? findInDocument} />
           <ToolButton label="Print" icon={Printer} onClick={() => onPrint?.()} />
           {/* No pressed state: spell check is on by default, and Docs leaves
               the button plain rather than lighting up on load. */}
@@ -655,7 +664,7 @@ export function FormattingToolbar({
           label="Insert link"
           icon={Link2}
           active={state.isLink}
-          onClick={promptForLink}
+          onClick={onEditLink ?? promptForLink}
         />
         {/* Disabled until there is a selection, because a comment with no
             anchor has nothing to point at. Not rendered at all where commenting
@@ -669,7 +678,7 @@ export function FormattingToolbar({
             disabled={!canAddComment}
           />
         )}
-        <ToolButton label="Insert image" icon={ImageIcon} onClick={promptForImage} />
+        <ToolButton label="Insert image" icon={ImageIcon} onClick={onInsertImage ?? promptForImage} />
 
         {/*
           One control for both jobs: sweeping the grid inserts a table, and the

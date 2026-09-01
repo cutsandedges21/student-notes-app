@@ -37,6 +37,7 @@ import { Pencil } from 'lucide-react'
 import { type SaveState } from '../components/SaveStatus'
 import { StorageNotice, type StorageFailure } from '../components/StorageNotice'
 import { ConflictDialog } from '../components/ConflictDialog'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
@@ -100,6 +101,14 @@ export default function EditorPage() {
    * between it and their own. Non-null is what puts the conflict dialog up.
    */
   const [conflict, setConflict] = useState<DocumentRow | null>(null)
+  /** Non-null while the delete confirmation is up. */
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  /**
+   * Errors from actions the writer took deliberately -- creating, deleting.
+   * Shown in the page rather than through window.alert, which blocks the main
+   * thread and so stalls any autosave that was still in flight.
+   */
+  const [actionError, setActionError] = useState<string | null>(null)
   // Closed by default: the panel is still a placeholder, and an empty 360px
   // column would crowd the formatting toolbar into a horizontal scroll.
   // Ctrl/Cmd+Shift+A and the AI button both open it.
@@ -526,21 +535,23 @@ export default function EditorPage() {
       navigate(noteHref(klass.slug, created.slug, created.id))
     } catch (caught) {
       console.error('[EditorPage] failed to create note:', caught)
-      window.alert(describeDataError(caught))
+      setActionError(describeDataError(caught))
     }
   }
 
   async function handleDeleteNote() {
     if (!doc || !klass) return
-    if (!window.confirm(`Delete "${title || 'Untitled note'}"? This cannot be undone.`)) return
 
+    setConfirmingDelete(false)
+    // Cancelled, not flushed: the note is about to stop existing, and letting
+    // a debounced save land first would write it once more on the way out.
     scheduler.cancel()
     try {
       await deleteDocument(userId, doc.id)
       navigate(`/classes/${klass.slug}`, { replace: true })
     } catch (caught) {
       console.error('[EditorPage] failed to delete note:', caught)
-      window.alert(describeDataError(caught))
+      setActionError(describeDataError(caught))
     }
   }
 
@@ -664,6 +675,32 @@ export default function EditorPage() {
    * notes swaps the editor's content in place rather than remounting it, and
    * dropping back to this screen would throw that away.
    */
+  /*
+   * Comments.
+   *
+   * Above the early returns, and that placement is load-bearing rather than
+   * stylistic: React counts hooks per render, so a hook called after
+   * `if (!doc) return ...` runs on some renders and not others. It was below
+   * them briefly and the editor did not render at all -- React error #310,
+   * "rendered more hooks than during the previous render", which surfaces as a
+   * blank page rather than as anything naming the cause.
+   *
+   * The document id is therefore optional here: on the first render there is
+   * no note yet, and the hook has to be callable anyway. It no-ops until one
+   * arrives.
+   *
+   * Instantiated here rather than inside the panel because the panel is
+   * mounted twice -- docked on desktop, in the drawer on narrow screens -- and
+   * two controllers would mean two subscriptions and two sets of highlights
+   * fighting over one editor.
+   */
+  const comments = useComments({
+    documentId: doc?.id ?? '',
+    userId,
+    editor,
+    ydoc: collaboration.active ? collaboration.ydoc : null,
+  })
+
   if (showLoading || !settled) return <LoadingScreen label="Loading note" />
 
   /*
@@ -720,21 +757,6 @@ export default function EditorPage() {
       : undefined
 
   const collaborationKey = editorCollaboration ? `collab:${doc.id}` : 'solo'
-
-  /*
-   * Comments.
-   *
-   * Instantiated here rather than inside the panel because the panel is
-   * mounted twice -- docked on desktop, in the drawer on narrow screens -- and
-   * two controllers would mean two subscriptions, two fetches, and two sets of
-   * highlights fighting over the same editor.
-   */
-  const comments = useComments({
-    documentId: doc.id,
-    userId,
-    editor,
-    ydoc: editorCollaboration?.ydoc ?? null,
-  })
 
   const commentsPanel = (
     <CommentsSidebar
@@ -820,7 +842,7 @@ export default function EditorPage() {
                 editor={editor}
                 onNewNote={() => void handleNewNote()}
                 onRename={focusTitle}
-                onDelete={() => void handleDeleteNote()}
+                onDelete={() => setConfirmingDelete(true)}
                 showRuler={showRuler}
                 onToggleRuler={() => setShowRuler((on) => !on)}
                 compact={compact}
@@ -986,6 +1008,34 @@ export default function EditorPage() {
           <div className="pointer-events-auto w-full max-w-lg [&>*]:mt-0">
             <StorageNotice hasContent failure={saveFailure} />
           </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Delete this note?"
+        message={`“${title || 'Untitled note'}” and everything in it will be removed. This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => void handleDeleteNote()}
+        onCancel={() => setConfirmingDelete(false)}
+      />
+
+      {actionError && (
+        <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+          <p
+            role="alert"
+            className="max-w-md rounded border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 shadow-sheet"
+          >
+            {actionError}
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              className="ml-3 font-medium underline"
+            >
+              Dismiss
+            </button>
+          </p>
         </div>
       )}
 

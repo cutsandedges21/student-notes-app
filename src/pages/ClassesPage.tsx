@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AppHeader } from '../components/AppHeader'
 import { Button } from '../components/ui/Button'
 import { CreateClassDialog } from '../components/CreateClassDialog'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { StorageNotice } from '../components/StorageNotice'
 import { MenuButton } from '../components/ui/MenuButton'
 import { useAuth } from '../contexts/AuthContext'
@@ -17,6 +18,8 @@ export default function ClassesPage() {
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** The class awaiting confirmation, or null when nothing is being deleted. */
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
 
   const userId = user?.id ?? null
 
@@ -42,12 +45,8 @@ export default function ClassesPage() {
     await load()
   }
 
-  async function handleDelete(classId: string, name: string) {
-    const confirmed = window.confirm(
-      `Delete "${name}" and all of its notes? This cannot be undone.`,
-    )
-    if (!confirmed) return
-
+  async function handleDelete(classId: string) {
+    setPendingDelete(null)
     setError(null)
     try {
       await deleteClass(userId, classId)
@@ -106,7 +105,7 @@ export default function ClassesPage() {
                       {
                         label: 'Delete class',
                         destructive: true,
-                        onSelect: () => void handleDelete(item.id, item.name),
+                        onSelect: () => setPendingDelete({ id: item.id, name: item.name }),
                       },
                     ]}
                   />
@@ -137,6 +136,16 @@ export default function ClassesPage() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onCreate={handleCreate}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete this class?"
+        message={`“${pendingDelete?.name ?? ''}” and every note in it will be removed. This cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => pendingDelete && void handleDelete(pendingDelete.id)}
+        onCancel={() => setPendingDelete(null)}
       />
     </div>
   )

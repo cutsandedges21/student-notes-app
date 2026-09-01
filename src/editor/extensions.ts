@@ -17,6 +17,7 @@ import { Indent } from './indent'
 import { PageBreak } from './pagination/PageBreak'
 import { AiPreviewExtension } from './aiPreview'
 import { CommentHighlight } from './commentHighlight'
+import { SearchHighlight } from './searchHighlight'
 
 /**
  * The editor's extension set.
@@ -75,4 +76,5 @@ export const editorExtensions = [
   Placeholder.configure({ placeholder: 'Start typing your notes…' }),
   AiPreviewExtension,
   CommentHighlight,
+  SearchHighlight,
 ]

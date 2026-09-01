@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react'
 import { cn } from '../../lib/cn'
 
 type Variant = 'primary' | 'secondary' | 'ghost'
@@ -9,6 +9,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: Size
   loading?: boolean
   children: ReactNode
+  /**
+   * React 19 passes `ref` to function components as an ordinary prop, so no
+   * forwardRef is needed -- but it is not part of ButtonHTMLAttributes, so it
+   * has to be declared to be typed. Dialogs use it to place initial focus.
+   */
+  ref?: Ref<HTMLButtonElement>
 }
 
 const VARIANTS: Record<Variant, string> = {
@@ -29,10 +35,12 @@ export function Button({
   disabled,
   className,
   children,
+  ref,
   ...props
 }: ButtonProps) {
   return (
     <button
+      ref={ref}
       type="button"
       disabled={disabled || loading}
       aria-busy={loading || undefined}

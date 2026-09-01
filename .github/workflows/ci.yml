@@ -52,6 +52,29 @@ jobs:
           VITE_SUPABASE_URL: https://example.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-key
 
+      # Not optional, and not last because it is least important.
+      #
+      # A hooks-order mistake in the editor page shipped once because the unit
+      # suite cannot see it: every component still renders in isolation, and
+      # the failure only exists when the real page mounts, loads, and re-renders
+      # with a document. Playwright caught it in seconds; nothing else did.
+      #
+      # The suite runs entirely signed out against browser storage, so it needs
+      # no secrets and cannot be skipped for want of them.
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   # Separate job: it needs a browser download, and a lint or type error should
   # report in seconds rather than after an install of Chromium.
   e2e:

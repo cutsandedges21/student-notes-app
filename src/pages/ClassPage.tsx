@@ -10,6 +10,7 @@ import { describeDataError } from '../lib/dataErrors'
 import { noteHref } from '../lib/noteRef'
 import { MenuButton } from '../components/ui/MenuButton'
 import { RenameClassDialog } from '../components/RenameClassDialog'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { deleteClass } from '../services/classes'
 import { deleteDocument } from '../services/documents'
 import type { ClassRow, DocumentListItem } from '../types/database'
@@ -24,6 +25,16 @@ export default function ClassPage() {
   const [professor, setProfessor] = useState('')
   const [renameOpen, setRenameOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /*
+   * What the confirmation is about, or null when it is closed.
+   *
+   * One dialog rather than two: the question and the consequence differ, but
+   * the shape of the interaction does not, and two nearly-identical dialogs
+   * drift apart.
+   */
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: 'class' } | { kind: 'note'; id: string; title: string } | null
+  >(null)
 
   const userId = user?.id ?? null
 
@@ -80,11 +91,7 @@ export default function ClassPage() {
 
   async function handleDeleteClass() {
     if (!klass) return
-    const confirmed = window.confirm(
-      `Delete "${klass.name}" and all of its notes? This cannot be undone.`,
-    )
-    if (!confirmed) return
-
+    setPendingDelete(null)
     setError(null)
     try {
       await deleteClass(userId, klass.id)
@@ -95,12 +102,8 @@ export default function ClassPage() {
     }
   }
 
-  async function handleDeleteDocument(documentId: string, docTitle: string) {
-    const confirmed = window.confirm(
-      `Delete "${docTitle || 'Untitled note'}"? This cannot be undone.`,
-    )
-    if (!confirmed) return
-
+  async function handleDeleteDocument(documentId: string) {
+    setPendingDelete(null)
     setError(null)
     try {
       await deleteDocument(userId, documentId)
@@ -151,7 +154,7 @@ export default function ClassPage() {
               {
                 label: 'Delete class',
                 destructive: true,
-                onSelect: () => void handleDeleteClass(),
+                onSelect: () => setPendingDelete({ kind: 'class' }),
               },
             ]}
           />
@@ -219,7 +222,8 @@ export default function ClassPage() {
                     {
                       label: 'Delete note',
                       destructive: true,
-                      onSelect: () => void handleDeleteDocument(doc.id, doc.title),
+                      onSelect: () =>
+                        setPendingDelete({ kind: 'note', id: doc.id, title: doc.title }),
                     },
                   ]}
                 />
@@ -234,6 +238,23 @@ export default function ClassPage() {
         currentName={klass.name}
         onClose={() => setRenameOpen(false)}
         onRename={handleRename}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete?.kind === 'class' ? 'Delete this class?' : 'Delete this note?'}
+        message={
+          pendingDelete?.kind === 'class'
+            ? `“${klass.name}” and every note in it will be removed. This cannot be undone.`
+            : `“${pendingDelete?.title || 'Untitled note'}” will be removed. This cannot be undone.`
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          if (pendingDelete?.kind === 'class') void handleDeleteClass()
+          else if (pendingDelete) void handleDeleteDocument(pendingDelete.id)
+        }}
+        onCancel={() => setPendingDelete(null)}
       />
     </div>
   )
