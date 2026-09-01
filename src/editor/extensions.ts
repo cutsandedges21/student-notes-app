@@ -11,12 +11,12 @@ import {
   Color,
   FontFamily,
   FontSize,
-  LineHeight,
 } from '@tiptap/extension-text-style'
 import { Indent } from './indent'
 import { PageBreak } from './pagination/PageBreak'
 import { AiPreviewExtension } from './aiPreview'
 import { CommentHighlight } from './commentHighlight'
+import { LineSpacing } from './lineSpacing'
 import { SearchHighlight } from './searchHighlight'
 
 /**
@@ -28,7 +28,7 @@ import { SearchHighlight } from './searchHighlight'
  * shortcuts. In Tiptap 3 link and underline ship inside StarterKit rather than
  * as standalone packages, so they are configured here rather than imported.
  *
- * TextStyle is the base mark that Color, FontFamily, FontSize and LineHeight
+ * TextStyle is the base mark that Color, FontFamily and FontSize
  * all attach to -- without it those four silently do nothing.
  *
  * Indent is ours: it backs the toolbar's indent buttons everywhere the list
@@ -62,7 +62,7 @@ export const editorExtensions = [
   Color,
   FontFamily,
   FontSize,
-  LineHeight,
+  LineSpacing,
   Indent,
   PageBreak,
   Highlight.configure({ multicolor: true }),

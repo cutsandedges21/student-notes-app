@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { AppDocIcon, SparkIcon } from './DocsIcons'
 import { ShareMenu } from './ShareMenu'
+import type { ShareMode } from '../services/sharing'
 import { deleteOwnAccount } from '../services/account'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { useAuth } from '../contexts/AuthContext'
@@ -25,6 +26,8 @@ interface DocsTitleBarProps {
   saveState: SaveState
   /** Why the last save failed, in the user's terms. Shown beside the state. */
   saveMessage?: string
+  /** Reports the note's share mode upward; live editing is gated on it. */
+  onShareModeChange?: (mode: ShareMode) => void
   /** Offered when a save was refused, so the state is not a dead end. */
   onRetrySave?: () => void
   /** Where the document icon navigates, i.e. the class this note belongs to. */
@@ -75,6 +78,7 @@ export function DocsTitleBar({
   onTitleChange,
   saveState,
   saveMessage,
+  onShareModeChange,
   onRetrySave,
   backTo,
   backLabel,
@@ -202,7 +206,7 @@ export function DocsTitleBar({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-3 pt-1">
-        <ShareMenu documentId={documentId} />
+        <ShareMenu documentId={documentId} onModeChange={onShareModeChange} />
 
         {/* The panel is permanently docked from `lg` up, so no trigger is
             needed there. Below that it opens as a drawer, which still has to

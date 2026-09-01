@@ -27,6 +27,7 @@ import {
 } from '../editor/applySuggestion'
 import { describeDataError } from '../lib/dataErrors'
 import { noteHref, parseNoteRef } from '../lib/noteRef'
+import type { ShareMode } from '../services/sharing'
 import { matchAiShortcut } from '../lib/shortcuts'
 import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { LoadingScreen } from '../components/LoadingScreen'
@@ -101,6 +102,8 @@ export default function EditorPage() {
    * between it and their own. Non-null is what puts the conflict dialog up.
    */
   const [conflict, setConflict] = useState<DocumentRow | null>(null)
+  /** Set by the share menu; null until it has said anything. */
+  const [liveShareMode, setLiveShareMode] = useState<ShareMode | null>(null)
   /** Non-null while the delete confirmation is up. */
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   /**
@@ -206,7 +209,14 @@ export default function EditorPage() {
    * Absent on a guest row, which is why the fallback is 'private' rather than
    * an assertion: signed out there is no server to share from.
    */
-  const shareMode = doc?.share_mode ?? 'private'
+  /*
+   * The note's share mode, as last reported by the share menu.
+   *
+   * Overrides the loaded row rather than replacing it: the row is read once at
+   * load, and turning sharing on afterwards has to reach the collaboration
+   * hook without a reload -- live editing is gated on exactly this value.
+   */
+  const shareMode = liveShareMode ?? doc?.share_mode ?? 'private'
 
   const collaboration = useCollaboration({
     documentId: doc?.id ?? null,
@@ -384,6 +394,9 @@ export default function EditorPage() {
 
         setKlass(classRow)
         setDoc(docRow)
+        // Belongs to the note that was open, not to this one. Left behind, an
+        // edit-shared note would make the next private note look collaborative.
+        setLiveShareMode(null)
         documentIdRef.current = docRow?.id ?? null
         headerRef.current = (docRow?.header as JSONContent) ?? null
         footerRef.current = (docRow?.footer as JSONContent) ?? null
@@ -832,6 +845,7 @@ export default function EditorPage() {
             onTitleChange={handleTitleChange}
             saveState={displayState}
             saveMessage={saveFailure?.message}
+            onShareModeChange={setLiveShareMode}
             onRetrySave={saveFailure ? retrySave : undefined}
             backTo={`/classes/${klass?.slug ?? ''}`}
             backLabel={klass ? `Back to ${klass.name}` : 'Back to class'}

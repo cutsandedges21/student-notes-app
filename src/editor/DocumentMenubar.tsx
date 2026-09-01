@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
 import type { PageNumberPosition } from './pagination/types'
 import { cn } from '../lib/cn'
+import { TableGridPicker } from './TableGridPicker'
 
 /**
  * The menu row: File, Edit, View, Insert, Format, Tools.
@@ -19,6 +20,15 @@ interface MenuAction {
   label: string
   shortcut?: string
   onSelect: () => void
+  /**
+   * Renders in place of the row's button.
+   *
+   * For the one case a label and a click cannot express: choosing a table's
+   * size, which is a grid you sweep. This used to insert a fixed 3x3 because
+   * "a menu row cannot hold the toolbar's size grid" -- it can, it just needed
+   * somewhere to go. `close` dismisses the menu once a size is committed.
+   */
+  render?: (close: () => void) => ReactNode
   disabled?: boolean
   separatorBefore?: boolean
   /**
@@ -111,6 +121,14 @@ function Menu({ label, items, openMenu, setOpenMenu }: MenuProps) {
                   {item.sectionBefore}
                 </div>
               )}
+              {item.render ? (
+                <div role="group" aria-label={item.label} className="px-2 py-1">
+                  <div className="px-2 pb-1 font-ui text-[11px] uppercase tracking-wide text-ink-faint">
+                    {item.label}
+                  </div>
+                  {item.render(() => setOpenMenu(null))}
+                </div>
+              ) : (
               <button
                 type="button"
                 role="menuitem"
@@ -138,6 +156,7 @@ function Menu({ label, items, openMenu, setOpenMenu }: MenuProps) {
                   <span className="text-xs text-ink-faint">{item.shortcut}</span>
                 )}
               </button>
+              )}
             </div>
           ))}
         </div>,
@@ -312,13 +331,19 @@ export function DocumentMenubar({
       items: [
         { label: 'Link', shortcut: 'Ctrl+K', onSelect: promptForLink },
         { label: 'Image', onSelect: promptForImage },
-        // A menu row cannot hold the toolbar's size grid, so this inserts the
-        // common case and leaves sizing to the grid or to the row and column
-        // actions on the table control.
         {
-          label: 'Table (3 × 3)',
-          onSelect: () =>
-            chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+          label: 'Table',
+          // Sweep to size, the same control the toolbar offers. A fixed 3x3
+          // used to sit here because a menu row had nowhere to put a grid.
+          onSelect: () => undefined,
+          render: (close) => (
+            <TableGridPicker
+              onSelect={({ rows, cols }) => {
+                chain().insertTable({ rows, cols, withHeaderRow: true }).run()
+                close()
+              }}
+            />
+          ),
         },
         {
           label: 'Page break',

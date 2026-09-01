@@ -14,6 +14,7 @@ import { TableGridPicker, type TableSize } from './TableGridPicker'
 import { ColorPicker } from './ColorPicker'
 import { FONT_GROUPS, findFontLabel } from './fonts'
 import { HighlightColorIcon, LineSpacingIcon, TextColorIcon } from './DocsIcons'
+import { activeLineHeight } from './lineSpacing'
 
 interface FormattingToolbarProps {
   editor: Editor | null
@@ -247,7 +248,15 @@ export function FormattingToolbar({
         fontStack: textStyle.fontFamily as string | undefined,
         fontSizeRaw: textStyle.fontSize as string | undefined,
         fontSize: parseInt(textStyle.fontSize ?? '11', 10) || 11,
-        lineHeight: (textStyle.lineHeight as string | undefined) ?? '1.75',
+        // Read from the block the caret is in, not from a text-style mark:
+        // spacing is a paragraph property, so that is where the answer lives.
+        // Headings carry their own spacing, so whichever block the caret is
+        // in is the one that answers.
+        lineHeight: activeLineHeight(
+          instance.isActive('heading')
+            ? instance.getAttributes('heading')
+            : instance.getAttributes('paragraph'),
+        ),
         color: textStyle.color as string | undefined,
         highlight: instance.getAttributes('highlight').color as string | undefined,
         isBold: instance.isActive('bold'),
@@ -776,7 +785,7 @@ export function FormattingToolbar({
                 key={option.value}
                 active={state.lineHeight === option.value}
                 onSelect={() => {
-                  editor.chain().focus().setLineHeight(option.value).run()
+                  editor.chain().focus().setLineSpacing(option.value).run()
                   close()
                 }}
               >

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import type { JSONContent } from '@tiptap/react'
+import type { Editor, JSONContent } from '@tiptap/react'
 import { DocumentEditor } from '../editor/DocumentEditor'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
 import { AppDocIcon } from '../editor/DocsIcons'
@@ -19,6 +19,8 @@ import {
 import { cn } from '../lib/cn'
 import { noteHref } from '../lib/noteRef'
 import { ConflictDialog } from '../components/ConflictDialog'
+import { CommentsSidebar } from '../comments/CommentsSidebar'
+import { useComments } from '../comments/useComments'
 import type { DocumentCollaboration } from '../editor/DocumentEditor'
 
 const AUTOSAVE_DELAY_MS = 1000
@@ -52,6 +54,7 @@ export default function SharedDocumentPage() {
   const [copying, setCopying] = useState(false)
   /* The newer version somebody else saved, pending the writer's choice. */
   const [conflict, setConflict] = useState<SharedDocument | null>(null)
+  const [editor, setEditor] = useState<Editor | null>(null)
   const versionRef = useRef(1)
   const contentRef = useRef<JSONContent | null>(null)
 
@@ -280,6 +283,24 @@ export default function SharedDocumentPage() {
    * frame, whose keystrokes would land in a ProseMirror document about to be
    * replaced by one seeded from content read a moment earlier.
    */
+  /*
+   * Comments, for the people the note was shared with.
+   *
+   * This is the page a collaborator actually lands on, so a comment panel that
+   * existed only in EditorPage was a comment panel only the owner could see --
+   * which is most of the way to not having comments at all. The database
+   * already allowed it: can_view_document covers anyone holding a
+   * document_access grant, which is what redeeming the share link records.
+   *
+   * Above the early returns, because hooks cannot be called conditionally.
+   */
+  const comments = useComments({
+    documentId: shared?.id ?? '',
+    userId: visitorId,
+    editor,
+    ydoc: collaboration.active ? collaboration.ydoc : null,
+  })
+
   if (!loaded || collaboration.pending) return null
 
   if (!shared) {
@@ -405,10 +426,30 @@ export default function SharedDocumentPage() {
           version={shared.version}
           initialContent={shared.content as JSONContent}
           editable={canEdit}
+          onReady={setEditor}
+          onAddComment={visitorId ? () => comments.startDraft() : undefined}
+          canAddComment={comments.canComment}
           onChange={(content) => {
             contentRef.current = content
             if (canEdit) scheduler.schedule({ title, content })
           }}
+          sidebar={
+            <CommentsSidebar
+              threads={comments.threads}
+              activeThreadId={comments.activeThreadId}
+              currentUserId={visitorId}
+              draft={comments.draft}
+              onSubmitDraft={(body) => void comments.submitDraft(body)}
+              onCancelDraft={comments.cancelDraft}
+              busy={comments.loading}
+              error={comments.error}
+              onSelect={comments.setActiveThreadId}
+              onReply={(threadId, body) => void comments.reply(threadId, body)}
+              onResolve={(threadId, resolved) => void comments.resolve(threadId, resolved)}
+              onDeleteThread={(threadId) => void comments.removeThread(threadId)}
+              onDeleteComment={(commentId) => void comments.removeComment(commentId)}
+            />
+          }
         />
       </main>
     </div>

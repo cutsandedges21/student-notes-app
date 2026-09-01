@@ -43,7 +43,22 @@ function formatGrantedAt(iso: string): string {
  * component compares the row's user_id against the session instead of relying
  * on where it happens to be mounted.
  */
-export function ShareMenu({ documentId }: { documentId: string }) {
+export function ShareMenu({
+  documentId,
+  onModeChange,
+}: {
+  documentId: string
+  /**
+   * Reports the mode after a change, and after the first read.
+   *
+   * The menu used to keep the mode entirely to itself, which meant the page
+   * hosting it never learned that a note had become collaborative. Live
+   * editing is gated on exactly that fact, so turning sharing on did nothing
+   * until the page was reloaded -- the switch flipped, the link worked, and
+   * the owner's own editor stayed single-writer.
+   */
+  onModeChange?: (mode: ShareMode) => void
+}) {
   const { session } = useAuth()
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<ShareMode>('private')
@@ -71,6 +86,7 @@ export function ShareMenu({ documentId }: { documentId: string }) {
         setMode(state.mode)
         setToken(state.token)
         setOwnerId(state.ownerId)
+        onModeChange?.(state.mode)
       })
       .catch((caught) => console.error('[ShareMenu] failed to read share state:', caught))
 
@@ -132,6 +148,9 @@ export function ShareMenu({ documentId }: { documentId: string }) {
     try {
       await setShareMode(documentId, next)
       setMode(next)
+      // Tell the page, so an editor that is now collaborative becomes one
+      // without waiting for a reload.
+      onModeChange?.(next)
     } catch (caught) {
       console.error('[ShareMenu] failed to update sharing:', caught)
       setNote('Could not update sharing')
