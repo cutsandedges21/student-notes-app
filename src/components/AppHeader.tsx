@@ -9,7 +9,9 @@ export function AppHeader() {
   return (
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-        <Link to="/classes" className="text-sm font-medium tracking-tight text-ink">
+        {/* Tracking opens up rather than tightening: the negative tracking
+            below was set for lowercase, and caps need room between them. */}
+        <Link to="/classes" className="text-sm font-medium uppercase tracking-wide text-ink">
           Margin
         </Link>
 

@@ -799,3 +799,36 @@
     transition: background-color 120ms ease-out;
   }
 }
+
+/*
+ * The intro wordmark rising into place.
+ *
+ * Plain CSS rather than a Tailwind layer for the usual reason: these names are
+ * not utilities, and putting them in `@layer` would let the scanner purge them
+ * from a production build.
+ *
+ * It rises by half its own height -- an `em`, so the travel scales with the
+ * type rather than being a fixed distance that reads differently at each size.
+ */
+@keyframes intro-word-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.intro-word {
+  /* Decelerating: fast away from the start, settling rather than arriving. */
+  animation: intro-word-rise 520ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+/* Motion is decoration here; the name is legible without it. */
+@media (prefers-reduced-motion: reduce) {
+  .intro-word {
+    animation: none;
+  }
+}
