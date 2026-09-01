@@ -274,10 +274,38 @@ export function useComments({
     [load],
   )
 
-  const selection = editor?.state.selection
-  const canComment = Boolean(
-    enabled && editor && selection && !selection.empty && editor.isEditable,
-  )
+  /*
+   * Whether there is something to comment on.
+   *
+   * The selection is editor state, not React state, so reading it during
+   * render only gives a fresh answer if something else re-rendered. On the
+   * owner's page that happened by accident -- EditorPage re-renders on its own
+   * selection handler -- but on the shared page nothing did, so the Add
+   * comment button stayed disabled forever and a collaborator could never
+   * start a thread. Subscribing here makes the answer correct on any page
+   * rather than on the one that happens to re-render.
+   */
+  const [selectionRevision, setSelectionRevision] = useState(0)
+  useEffect(() => {
+    if (!editor) return
+    const bump = () => setSelectionRevision((n) => n + 1)
+    editor.on('selectionUpdate', bump)
+    // Editability is not a selection event, and it decides this too: a shared
+    // note becomes editable only once the visitor signs in.
+    editor.on('update', bump)
+    return () => {
+      editor.off('selectionUpdate', bump)
+      editor.off('update', bump)
+    }
+  }, [editor])
+
+  const canComment = useMemo(() => {
+    if (!enabled || !editor || editor.isDestroyed) return false
+    return !editor.state.selection.empty
+    // `selectionRevision` is the dependency that matters: it is what says the
+    // selection moved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, editor, selectionRevision])
 
   /*
    * The anchor is taken here, when the composer opens, and not when it is

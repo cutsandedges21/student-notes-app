@@ -25,11 +25,14 @@ const SPACED_BLOCKS = ['paragraph', 'heading', 'listItem', 'taskItem'] as const
 /**
  * The default, matching the editor's own stylesheet.
  *
- * Stored as null rather than as "1.75" so an untouched paragraph carries no
+ * Stored as null rather than as "1" so an untouched paragraph carries no
  * attribute at all: nothing is written into the document until somebody
  * chooses a spacing, and exports stay clean.
+ *
+ * Must stay in step with `.ProseMirror`'s `leading-` in index.css, or the
+ * toolbar's readout names a spacing the page is not actually using.
  */
-export const DEFAULT_LINE_HEIGHT = '1.75'
+export const DEFAULT_LINE_HEIGHT = '1'
 
 export interface LineSpacingOptions {
   types: string[]

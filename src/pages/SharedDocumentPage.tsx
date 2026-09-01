@@ -18,6 +18,7 @@ import {
 } from '../services/sharing'
 import { cn } from '../lib/cn'
 import { noteHref } from '../lib/noteRef'
+import { loginHref } from '../lib/returnTo'
 import { ConflictDialog } from '../components/ConflictDialog'
 import { CommentsSidebar } from '../comments/CommentsSidebar'
 import { useComments } from '../comments/useComments'
@@ -356,7 +357,16 @@ export default function SharedDocumentPage() {
           </p>
           <p className="truncate font-ui text-xs text-ink-faint">
             {shared.class_name}
-            {canEdit ? ' · You can edit' : ' · View only'}
+            {/*
+              Says which document you are in, not just what you may do to it.
+              "You can edit" was read as "you have your own editable version",
+              which is what Make a copy actually gives you -- and a copy is a
+              different note, so comments and cursors were never going to be
+              shared. Naming it as the same note is the difference.
+            */}
+            {canEdit
+              ? ' · Editing together — everyone with this link shares this note'
+              : ' · View only'}
           </p>
         </div>
 
@@ -375,7 +385,10 @@ export default function SharedDocumentPage() {
                   : 'Sign in to save a copy'}
               </span>
               <Link
-                to="/login"
+                // Carries the note back with them; landing on /classes after
+                // signing in loses the link, and the only remaining button is
+                // "Make a copy", which shares nothing.
+                to={loginHref(`/shared/${token ?? ''}`)}
                 className="rounded-full bg-docs-chip px-4 py-2 font-ui text-sm font-medium text-docs-chip-text transition-colors hover:bg-docs-chip-hover"
               >
                 Sign in
@@ -383,17 +396,31 @@ export default function SharedDocumentPage() {
             </>
           )}
 
+          {/*
+            On an edit link the visitor is already in the shared note, so a
+            copy is the unusual choice and is styled as one. Leading with it
+            invited the reading that copying is how you join -- it is the
+            opposite: a copy is your own note, and nothing typed in it reaches
+            anybody else.
+          */}
           {session && !isOwner && (
             <button
               type="button"
               onClick={() => void handleCopy()}
               disabled={copying}
+              title={
+                canEdit
+                  ? 'Saves a separate note in your account. Your copy is not shared, and edits to it stay with you.'
+                  : 'Saves your own editable note from this one.'
+              }
               className={cn(
-                'rounded-full bg-docs-chip px-4 py-2 font-ui text-sm font-medium text-docs-chip-text',
-                'transition-colors hover:bg-docs-chip-hover disabled:opacity-60',
+                'rounded-full px-4 py-2 font-ui text-sm font-medium transition-colors disabled:opacity-60',
+                canEdit
+                  ? 'border border-line-strong text-ink hover:bg-surface-hover'
+                  : 'bg-docs-chip text-docs-chip-text hover:bg-docs-chip-hover',
               )}
             >
-              {copying ? 'Copying…' : 'Make a copy'}
+              {copying ? 'Copying…' : canEdit ? 'Save my own copy' : 'Make a copy'}
             </button>
           )}
 

@@ -1,14 +1,17 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { AuthLayout } from '../components/AuthLayout'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useAuth } from '../contexts/AuthContext'
 import { describeAuthError } from '../lib/authErrors'
+import { safeReturnTo, signUpHref } from '../lib/returnTo'
 
 export default function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const returnTo = safeReturnTo(params.get('next'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -20,7 +23,9 @@ export default function LoginPage() {
     setSubmitting(true)
     try {
       await signIn(email, password)
-      navigate('/classes', { replace: true })
+      // Back where they came from, which for a share link is the note they
+      // were trying to open. Validated: `next` comes from the query string.
+      navigate(returnTo, { replace: true })
     } catch (caught) {
       console.error('[LoginPage] sign-in failed:', caught)
       setError(describeAuthError(caught))
@@ -35,7 +40,7 @@ export default function LoginPage() {
       footer={
         <>
           Need an account?{' '}
-          <Link to="/signup" className="text-accent hover:underline">
+          <Link to={signUpHref(returnTo)} className="text-accent hover:underline">
             Sign up
           </Link>
         </>

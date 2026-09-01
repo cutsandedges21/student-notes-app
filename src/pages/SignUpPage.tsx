@@ -1,14 +1,17 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { AuthLayout } from '../components/AuthLayout'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useAuth } from '../contexts/AuthContext'
 import { describeAuthError } from '../lib/authErrors'
+import { loginHref, safeReturnTo } from '../lib/returnTo'
 
 export default function SignUpPage() {
   const { signUp } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const returnTo = safeReturnTo(params.get('next'))
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -34,7 +37,9 @@ export default function SignUpPage() {
         return
       }
 
-      navigate('/classes', { replace: true })
+      // Same reasoning as sign-in: somebody who arrived from a share link is
+      // signing up in order to open that note, not to browse their own.
+      navigate(returnTo, { replace: true })
     } catch (caught) {
       console.error('[SignUpPage] sign-up failed:', caught)
       setError(describeAuthError(caught))
@@ -49,7 +54,7 @@ export default function SignUpPage() {
         title="Check your email"
         subtitle={`We sent a confirmation link to ${confirmationSentTo}.`}
         footer={
-          <Link to="/login" className="text-accent hover:underline">
+          <Link to={loginHref(returnTo)} className="text-accent hover:underline">
             Back to sign in
           </Link>
         }
@@ -74,7 +79,7 @@ export default function SignUpPage() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="text-accent hover:underline">
+          <Link to={loginHref(returnTo)} className="text-accent hover:underline">
             Sign in
           </Link>
         </>

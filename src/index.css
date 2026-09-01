@@ -72,8 +72,9 @@
  * it as plain CSS (still using `@apply`) makes Tailwind emit it unconditionally.
  */
 .ProseMirror {
-  /* Document default: Arial 11pt, matching the toolbar's initial readout. */
-  @apply font-doc text-[11pt] leading-[1.75] text-ink;
+  /* Document default: Arial 11pt single-spaced, matching the toolbar's
+     initial readout. Kept in step with DEFAULT_LINE_HEIGHT in lineSpacing.ts. */
+  @apply font-doc text-[11pt] leading-[1] text-ink;
 }
 
 .ProseMirror > * + * {
@@ -679,9 +680,15 @@
 /*
  * The name tag.
  *
- * Hidden until the caret is hovered or the document is: a permanent label over
- * every collaborator's position covers the text they are writing, which is the
- * text you are most likely trying to read.
+ * Always visible, which is a deliberate reversal. It used to appear only on
+ * hover, on the reasoning that a permanent label covers the text underneath --
+ * true, but it made collaborators effectively invisible: you had to already
+ * suspect somebody was there, and go looking, to find out that they were. The
+ * point of a presence cursor is being noticed without being sought.
+ *
+ * Kept small and offset above the line so it sits in the leading rather than
+ * over the words, and it fades while its owner is idle -- see the animation
+ * below, which is what keeps a room full of parked cursors quiet.
  */
 .collaboration-carets__label {
   position: absolute;
@@ -697,13 +704,62 @@
   white-space: nowrap;
   color: #ffffff;
   user-select: none;
-  opacity: 0;
+  /* Above the caret's own stacking context so a label near the start of a line
+     is not clipped by the text that follows it. */
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 1;
   transition: opacity 150ms;
+}
+
+/*
+ * The initial, drawn from the label's own text.
+ *
+ * `data-initial` is set by the caret renderer rather than by CSS, because CSS
+ * cannot take the first character of an attribute. A disc with a letter reads
+ * as a person at a glance in a way a name alone does not, which is what makes
+ * two carets in the same paragraph tellable apart without reading either.
+ */
+.collaboration-carets__label::before {
+  content: attr(data-initial);
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.28);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/*
+ * Idle cursors step back rather than disappear.
+ *
+ * Somebody who has stopped typing is still in the document, so the caret
+ * stays; but a stack of motionless name tags is noise, so they dim. Any
+ * awareness update restarts the animation, so a cursor that moves is at full
+ * strength immediately.
+ */
+.collaboration-carets__label {
+  animation: caret-label-idle 12s ease-out forwards;
+}
+
+@keyframes caret-label-idle {
+  0%, 40% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collaboration-carets__label { animation: none; }
 }
 
 .ProseMirror:hover .collaboration-carets__label,
 .collaboration-carets__caret:hover .collaboration-carets__label {
   opacity: 1;
+  animation: none;
 }
 
 /* Their selection. The alpha comes from the extension's inline style, so the
