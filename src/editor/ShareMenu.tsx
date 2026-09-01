@@ -74,6 +74,17 @@ export function ShareMenu({
   const [resetError, setResetError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  /*
+   * Held in a ref so the fetch effect does not depend on the callback's
+   * identity. A caller passing an inline arrow would otherwise re-run the
+   * share-state read on every one of its renders, which is a network request
+   * per keystroke in the note's title.
+   */
+  const notifyModeRef = useRef(onModeChange)
+  useEffect(() => {
+    notifyModeRef.current = onModeChange
+  }, [onModeChange])
+
   const isOwner = Boolean(session && ownerId && session.user.id === ownerId)
 
   useEffect(() => {
@@ -86,7 +97,7 @@ export function ShareMenu({
         setMode(state.mode)
         setToken(state.token)
         setOwnerId(state.ownerId)
-        onModeChange?.(state.mode)
+        notifyModeRef.current?.(state.mode)
       })
       .catch((caught) => console.error('[ShareMenu] failed to read share state:', caught))
 
@@ -150,7 +161,7 @@ export function ShareMenu({
       setMode(next)
       // Tell the page, so an editor that is now collaborative becomes one
       // without waiting for a reload.
-      onModeChange?.(next)
+      notifyModeRef.current?.(next)
     } catch (caught) {
       console.error('[ShareMenu] failed to update sharing:', caught)
       setNote('Could not update sharing')

@@ -51,12 +51,14 @@ import {
   revokeDocumentAccess,
   rotateShareToken,
   type DocumentAccessEntry,
+  setShareMode,
 } from '../services/sharing'
 
 const fetchShareStateMock = vi.mocked(fetchShareState)
 const listDocumentAccessMock = vi.mocked(listDocumentAccess)
 const revokeDocumentAccessMock = vi.mocked(revokeDocumentAccess)
 const rotateShareTokenMock = vi.mocked(rotateShareToken)
+const setShareModeMock = vi.mocked(setShareMode)
 
 const signedInAs = (id: string) => ({ user: { id } }) as unknown as Session
 
@@ -68,10 +70,10 @@ const grant = (overrides: Partial<DocumentAccessEntry>): DocumentAccessEntry => 
   ...overrides,
 })
 
-async function openMenu() {
+async function openMenu(onModeChange?: (mode: 'private' | 'view' | 'edit') => void) {
   render(
     <MemoryRouter>
-      <ShareMenu documentId="doc-1" />
+      <ShareMenu documentId="doc-1" onModeChange={onModeChange} />
     </MemoryRouter>,
   )
   await userEvent.click(screen.getByRole('button', { name: /share/i }))
@@ -240,6 +242,56 @@ describe('ShareMenu', () => {
 
     expect(await screen.findByText(/couldn’t load who has access/i)).toBeInTheDocument()
     expect(screen.queryByText(/nobody has opened the link yet/i)).toBeNull()
+  })
+
+  /*
+   * Live editing is gated on the page knowing the note is shared for editing.
+   *
+   * This menu used to keep the mode entirely to itself, so turning sharing on
+   * changed nothing until a reload: the switch flipped, the link worked, and
+   * the owner's own editor stayed single-writer. Reporting the mode upward is
+   * the whole fix, so it is what these assert.
+   */
+  describe('reporting the mode to the page', () => {
+    it('reports the mode it read, so an already-shared note collaborates', async () => {
+      const onModeChange = vi.fn()
+      await openMenu(onModeChange)
+
+      await waitFor(() => expect(onModeChange).toHaveBeenCalledWith('edit'))
+    })
+
+    it('reports a change the moment it is made, not on the next reload', async () => {
+      fetchShareStateMock.mockResolvedValue({
+        mode: 'private',
+        token: 'token-original',
+        ownerId: OWNER,
+      })
+      const onModeChange = vi.fn()
+      await openMenu(onModeChange)
+      await waitFor(() => expect(onModeChange).toHaveBeenCalledWith('private'))
+
+      setShareModeMock.mockResolvedValue(undefined)
+      await userEvent.click(
+        screen.getByRole('menuitemradio', { name: /can edit/i }),
+      )
+
+      await waitFor(() => expect(onModeChange).toHaveBeenLastCalledWith('edit'))
+    })
+
+    it('does not claim a change that failed to save', async () => {
+      const onModeChange = vi.fn()
+      await openMenu(onModeChange)
+      await waitFor(() => expect(onModeChange).toHaveBeenCalled())
+      onModeChange.mockClear()
+
+      setShareModeMock.mockRejectedValue(new Error('network down'))
+      await userEvent.click(
+        screen.getByRole('menuitemradio', { name: /restricted/i }),
+      )
+
+      await waitFor(() => expect(screen.getByText(/could not update sharing/i)).toBeVisible())
+      expect(onModeChange).not.toHaveBeenCalled()
+    })
   })
 
   it('says plainly that an unused link has let nobody in', async () => {
