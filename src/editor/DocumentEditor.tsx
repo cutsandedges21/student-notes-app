@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { YjsProvider, ProviderUser } from '../collab/YjsProvider'
 import { PresenceBar } from '../components/PresenceBar'
 import { editorExtensions } from './extensions'
+import { renderCollaborationCaret } from './collaborationCaret'
 import { FormattingToolbar } from './FormattingToolbar'
 import { PaginatedSheet } from './PaginatedSheet'
 import { PageZone, zoneExtensions, type PageZoneKind } from './PageZone'
@@ -244,7 +245,13 @@ export function DocumentEditor({
       // The caret extension only ever reads `provider.awareness`, which is a
       // real y-protocols Awareness -- it does not care that this is not a
       // Hocuspocus provider.
-      CollaborationCaret.configure({ provider, user: collaboration?.user }),
+      CollaborationCaret.configure({
+        provider,
+        user: collaboration?.user,
+        // Custom renderer so the label carries an initial and is always
+        // present -- see collaborationCaret.ts for why.
+        render: renderCollaborationCaret,
+      }),
     ]
     // `collaboration.user` is read at creation only; a name arriving later is
     // pushed through awareness by the hook rather than by rebuilding the editor.
@@ -566,7 +573,9 @@ export function DocumentEditor({
               <div className="pointer-events-auto rounded-full border border-line bg-surface px-1 py-1 shadow-pill transition-colors hover:bg-docs-chrome-hover">
                 <ToolbarDropdown
                   label="Mode"
-                  width={104}
+                  // Sized for "Viewing", the longer of the two labels, which
+                  // was clipping at the previous width.
+                  width={128}
                   triggerClassName="hover:bg-transparent"
                   trigger={
                     <span className="flex items-center gap-2">

@@ -34,7 +34,6 @@ import { LoadingScreen } from '../components/LoadingScreen'
 import { snapshotDocument } from '../services/documents'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
-import { Pencil } from 'lucide-react'
 import { type SaveState } from '../components/SaveStatus'
 import { StorageNotice, type StorageFailure } from '../components/StorageNotice'
 import { ConflictDialog } from '../components/ConflictDialog'
@@ -1060,17 +1059,6 @@ export default function EditorPage() {
       />
 
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
-
-      {!editable && (
-        <button
-          type="button"
-          onClick={() => setEditable(true)}
-          className="fixed right-5 top-5 z-40 flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 font-ui text-sm text-ink shadow-pill transition-colors hover:bg-surface-hover"
-        >
-          <Pencil size={15} className="text-docs-icon" />
-          Back to editing
-        </button>
-      )}
 
       {fullScreen && (
         <AiBubble open={sidebarOpen} onClick={() => setSidebarOpen((open) => !open)} />
