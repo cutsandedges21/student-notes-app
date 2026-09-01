@@ -19,11 +19,13 @@
 -- documents
 -- ---------------------------------------------------------------------------
 drop policy if exists "documents_select_own" on public.documents;
+drop policy if exists "documents_select_shared" on public.documents;
 create policy "documents_select_shared"
   on public.documents for select
   using (public.can_view_document(id));
 
 drop policy if exists "documents_update_own" on public.documents;
+drop policy if exists "documents_update_shared" on public.documents;
 create policy "documents_update_shared"
   on public.documents for update
   using (public.can_edit_document(id))
@@ -41,6 +43,7 @@ create policy "documents_update_shared"
 -- they already have access to -- and nothing else: no listing, no other
 -- classes, no write of any kind.
 drop policy if exists "classes_select_own" on public.classes;
+drop policy if exists "classes_select_visible" on public.classes;
 create policy "classes_select_visible"
   on public.classes for select
   using (

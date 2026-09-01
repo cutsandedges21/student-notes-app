@@ -100,6 +100,13 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+-- `returns table (document_id, mode)` makes those names variables as well as
+-- output columns, so `on conflict (document_id, user_id)` below is ambiguous
+-- and raised 42702 on every call. Nothing in this body wants the variable, so
+-- resolving such names to the column is unambiguously right. Corrected here as
+-- well as in the later migration that repairs already-applied databases, so a
+-- fresh `db reset` never creates the broken version at all.
+#variable_conflict use_column
 declare
   doc record;
 begin

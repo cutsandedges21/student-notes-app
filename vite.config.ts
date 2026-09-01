@@ -20,7 +20,10 @@ export default defineConfig({
      * `include` covers src/ and the edge functions, whose validation and CORS
      * logic are unit-tested from here even though they ship to Deno.
      */
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'supabase/functions/**/*.{test,spec}.ts'],
+    include: [
+      'src/**/*.{test,spec}.{ts,tsx}',
+      'supabase/**/*.{test,spec}.ts',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
     /*
      * Vitest's default is 5s, which suits tests that call a function. A good
