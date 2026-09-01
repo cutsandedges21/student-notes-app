@@ -28,6 +28,14 @@ export function extractPlainText(node: JSONContent): string {
   // newline instead.
   if (node.type === 'hardBreak') return '\n'
 
+  // A row's cells are block nodes, so the generic rule below would give each
+  // its own line -- and the row grouping, which is the entire meaning of a
+  // table, would be gone by the time the AI reads the note back. Pipes keep it,
+  // and are what the model was asked to write in the first place.
+  if (node.type === 'tableRow') {
+    return (node.content ?? []).map(extractPlainText).join(' | ')
+  }
+
   const children = node.content ?? []
   const parts = children.map(extractPlainText)
 

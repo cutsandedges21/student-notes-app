@@ -127,4 +127,36 @@ describe('extractPlainText', () => {
     }
     expect(extractPlainText(doc)).toBe('Line one\nLine two')
   })
+
+  /*
+   * Cells are block nodes, so the generic rule would give each one its own
+   * line and the row grouping would be gone. That grouping is the entire
+   * meaning of a table -- without it the AI reading the note back cannot tell
+   * which value belongs to which column.
+   */
+  it('keeps a table row on one line, cells separated by pipes', () => {
+    const cell = (text: string) => ({
+      type: 'tableCell',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    })
+    const header = (text: string) => ({
+      type: 'tableHeader',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    })
+
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'table',
+          content: [
+            { type: 'tableRow', content: [header('D'), header('B')] },
+            { type: 'tableRow', content: [cell('T'), cell('F')] },
+          ],
+        },
+      ],
+    }
+
+    expect(extractPlainText(doc)).toBe('D | B\nT | F')
+  })
 })

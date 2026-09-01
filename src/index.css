@@ -169,6 +169,61 @@
 }
 
 /*
+ * Tables.
+ *
+ * `.tableWrapper`, `.selectedCell` and `.column-resize-handle` are injected at
+ * runtime by prosemirror-tables, so this block stays outside
+ * `@layer components` for the same reason as the ones above -- the JIT purge
+ * never sees these names in the source and would drop the rules.
+ */
+.ProseMirror table {
+  @apply my-3 w-full border-collapse;
+  /* Fixed layout is what makes the resize handles mean anything: with `auto`
+     the browser re-solves every column width from content and a dragged
+     column springs back. */
+  table-layout: fixed;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  @apply relative border border-line-strong px-2 py-1 align-top;
+  /* Without a floor, a column dragged to nothing collapses and its handle
+     becomes impossible to grab again. */
+  min-width: 3em;
+}
+
+.ProseMirror th {
+  @apply bg-surface-hover text-left font-semibold;
+}
+
+/*
+ * Cell paragraphs sit flush. The document's block spacing is designed for
+ * prose in a column; applied inside a cell it pushes the first line down and
+ * makes every row taller than the text it holds.
+ */
+.ProseMirror th > p,
+.ProseMirror td > p {
+  @apply m-0;
+}
+
+/* The range covered by a multi-cell selection. */
+.ProseMirror .selectedCell::after {
+  @apply pointer-events-none absolute inset-0 z-10 bg-accent/20;
+  content: '';
+}
+
+/* The grip sitting on a column's right edge while the pointer is near it. */
+.ProseMirror .column-resize-handle {
+  @apply pointer-events-none absolute top-0 z-20 w-[3px] bg-accent;
+  right: -2px;
+  bottom: -2px;
+}
+
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+
+/*
  * Pagination.
  *
  * Same rule as the blocks above: NOT inside `@layer components`, because
@@ -655,4 +710,36 @@
    text underneath stays readable through it. */
 .ProseMirror-yjs-selection {
   border-radius: 2px;
+}
+
+/*
+ * Commented passages.
+ *
+ * Drawn as decorations, never as marks, so none of this reaches the document's
+ * content -- see src/editor/commentHighlight.ts. A comment is permission-
+ * controlled and the note body is not, so a highlight that lived in the body
+ * would be a permission-controlled fact stored where the body's permissions
+ * are the only ones that apply.
+ *
+ * Underline plus a wash rather than a block of colour: the passage still has
+ * to read as the student's own text, and highlight marks are already a feature
+ * the editor offers with a different meaning.
+ */
+.comment-highlight {
+  background-color: rgb(255 214 102 / 0.28);
+  border-bottom: 2px solid rgb(240 178 20 / 0.75);
+  cursor: pointer;
+}
+
+.comment-highlight--active {
+  background-color: rgb(255 214 102 / 0.55);
+  border-bottom-color: rgb(214 150 0);
+}
+
+/* The passage moves under the reader when a thread is selected, so the change
+   is worth a beat -- but not for anyone who has asked for less motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .comment-highlight {
+    transition: background-color 120ms ease-out;
+  }
 }

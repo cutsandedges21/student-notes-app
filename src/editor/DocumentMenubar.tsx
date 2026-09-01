@@ -9,7 +9,7 @@ import { cn } from '../lib/cn'
  *
  * Every item here performs a real action. Menus that merely look the part are
  * worse than no menus: they advertise capability the app doesn't have, and a
- * student who clicks "Insert > Table" and gets nothing learns to distrust the
+ * student who clicks "Insert > Chart" and gets nothing learns to distrust the
  * whole bar. Docs' Extensions and Help menus are deliberately absent for the
  * same reason -- the AI panel is reachable from its own button and
  * Ctrl+Shift+A, so a menu holding one shortcut to it earned no space.
@@ -312,6 +312,14 @@ export function DocumentMenubar({
       items: [
         { label: 'Link', shortcut: 'Ctrl+K', onSelect: promptForLink },
         { label: 'Image', onSelect: promptForImage },
+        // A menu row cannot hold the toolbar's size grid, so this inserts the
+        // common case and leaves sizing to the grid or to the row and column
+        // actions on the table control.
+        {
+          label: 'Table (3 × 3)',
+          onSelect: () =>
+            chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+        },
         {
           label: 'Page break',
           shortcut: 'Ctrl+Enter',

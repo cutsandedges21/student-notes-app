@@ -22,5 +22,22 @@ export default defineConfig({
      */
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'supabase/functions/**/*.{test,spec}.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
+    /*
+     * Vitest's default is 5s, which suits tests that call a function. A good
+     * few here mount a full ProseMirror editor into jsdom, and one encodes a
+     * buffer deliberately larger than the spread-argument limit.
+     *
+     * Those are fast alone -- the collab encoding file runs in about 600ms --
+     * but the suite spins up a jsdom environment per file across 39 files, and
+     * environment setup already costs more wall-clock than the assertions do.
+     * Under that contention three of them crossed 5s and failed as timeouts,
+     * on a machine with cores to spare; a two-core CI runner would be worse.
+     *
+     * Raised rather than papered over: each of those tests was checked to be
+     * slow, not hung. If something genuinely deadlocks, 15s still catches it
+     * without turning a hang into a twenty-minute CI job.
+     */
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
   },
 })

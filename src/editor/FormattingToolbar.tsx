@@ -6,10 +6,11 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Printer, Minus, Plus, SpellCheck, PaintRoller, Search, Undo2, Redo2,
   MessageSquarePlus, ListIndentIncrease, ListIndentDecrease,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, Table as TableIcon,
 } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
+import { TableGridPicker, type TableSize } from './TableGridPicker'
 import { ColorPicker } from './ColorPicker'
 import { FONT_GROUPS, findFontLabel } from './fonts'
 import { HighlightColorIcon, LineSpacingIcon, TextColorIcon } from './DocsIcons'
@@ -24,6 +25,16 @@ interface FormattingToolbarProps {
   onToggleCompact?: () => void
   /** Shared with the File menu and Ctrl+P; window.print() prints the app. */
   onPrint?: () => void
+  /**
+   * Starts a comment on the current selection.
+   *
+   * Omitted where commenting is not possible at all -- a shared note opened by
+   * a signed-out visitor -- in which case the button is not rendered rather
+   * than rendered dead.
+   */
+  onAddComment?: () => void
+  /** False with nothing selected: there would be nothing to anchor to. */
+  canAddComment?: boolean
 }
 
 /**
@@ -185,6 +196,8 @@ export function FormattingToolbar({
   compact = false,
   onToggleCompact,
   onPrint,
+  onAddComment,
+  canAddComment = false,
 }: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
@@ -236,6 +249,7 @@ export function FormattingToolbar({
         isBulletList: instance.isActive('bulletList'),
         isOrderedList: instance.isActive('orderedList'),
         isTaskList: instance.isActive('taskList'),
+        inTable: instance.isActive('table'),
         inListItem: instance.isActive('listItem'),
         inTaskItem: instance.isActive('taskItem'),
         alignLeft: instance.isActive({ textAlign: 'left' }),
@@ -643,15 +657,78 @@ export function FormattingToolbar({
           active={state.isLink}
           onClick={promptForLink}
         />
-        {/* Docs greys this out until there is a selection; we have no comment
-            thread to attach, so it stays in the row looking exactly the same
-            and says so rather than pretending. */}
-        <ToolButton
-          label="Add comment (not available in Margin)"
-          icon={MessageSquarePlus}
-          unavailable
-        />
+        {/* Disabled until there is a selection, because a comment with no
+            anchor has nothing to point at. Not rendered at all where commenting
+            is impossible -- a dead control that explains itself is still a dead
+            control. */}
+        {onAddComment && (
+          <ToolButton
+            label={canAddComment ? 'Add comment' : 'Add comment (select some text first)'}
+            icon={MessageSquarePlus}
+            onClick={canAddComment ? onAddComment : undefined}
+            disabled={!canAddComment}
+          />
+        )}
         <ToolButton label="Insert image" icon={ImageIcon} onClick={promptForImage} />
+
+        {/*
+          One control for both jobs: sweeping the grid inserts a table, and the
+          same menu grows the row/column actions once the caret is inside one.
+          Splitting insert and edit across two buttons would leave whichever
+          one did not apply sitting there disabled most of the time.
+        */}
+        <ToolbarDropdown
+          label={state.inTable ? 'Table' : 'Insert table'}
+          trigger={<TableIcon size={17} strokeWidth={1.8} />}
+          active={state.inTable}
+        >
+          {(close) => (
+            <>
+              <TableGridPicker
+                onSelect={(size: TableSize) => {
+                  // A header row by default: nearly every table a student
+                  // writes labels its columns, and toggling it off afterwards
+                  // is one click while adding it back is several.
+                  editor
+                    .chain()
+                    .focus()
+                    .insertTable({ rows: size.rows, cols: size.cols, withHeaderRow: true })
+                    .run()
+                  close()
+                }}
+              />
+
+              {state.inTable && (
+                <>
+                  <div className="my-1 h-px bg-docs-divider" />
+                  {(
+                    [
+                      ['Insert row above', () => editor.chain().focus().addRowBefore().run()],
+                      ['Insert row below', () => editor.chain().focus().addRowAfter().run()],
+                      ['Insert column left', () => editor.chain().focus().addColumnBefore().run()],
+                      ['Insert column right', () => editor.chain().focus().addColumnAfter().run()],
+                      ['Delete row', () => editor.chain().focus().deleteRow().run()],
+                      ['Delete column', () => editor.chain().focus().deleteColumn().run()],
+                      ['Toggle header row', () => editor.chain().focus().toggleHeaderRow().run()],
+                      ['Merge or split cells', () => editor.chain().focus().mergeOrSplit().run()],
+                      ['Delete table', () => editor.chain().focus().deleteTable().run()],
+                    ] as const
+                  ).map(([label, run]) => (
+                    <DropdownItem
+                      key={label}
+                      onSelect={() => {
+                        run()
+                        close()
+                      }}
+                    >
+                      {label}
+                    </DropdownItem>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </ToolbarDropdown>
 
         <Divider />
 

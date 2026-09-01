@@ -5,6 +5,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
+import { TableKit } from '@tiptap/extension-table'
 import {
   TextStyle,
   Color,
@@ -15,6 +16,7 @@ import {
 import { Indent } from './indent'
 import { PageBreak } from './pagination/PageBreak'
 import { AiPreviewExtension } from './aiPreview'
+import { CommentHighlight } from './commentHighlight'
 
 /**
  * The editor's extension set.
@@ -36,6 +38,15 @@ import { AiPreviewExtension } from './aiPreview'
  * document containing one has to know the node type, including the read-only
  * shared view, which runs no pagination of its own. The automatic breaks are
  * not here -- those are measured decorations, never part of the document.
+ *
+ * TableKit is schema for the same reason PageBreak is: table, tableRow,
+ * tableHeader and tableCell all have to be known to every editor that might
+ * open a note containing one, or the nodes are dropped on parse and the
+ * student's table is silently deleted by opening it in the shared view.
+ *
+ * Resizing is on. The pagination engine treats a table as a container and
+ * breaks it between rows, so a table taller than a page continues onto the
+ * next one instead of overflowing the sheet.
  */
 export const editorExtensions = [
   StarterKit.configure({
@@ -56,8 +67,12 @@ export const editorExtensions = [
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Image.configure({ inline: false, HTMLAttributes: { class: 'doc-image' } }),
+  TableKit.configure({
+    table: { resizable: true, HTMLAttributes: { class: 'doc-table' } },
+  }),
   TaskList,
   TaskItem.configure({ nested: true }),
   Placeholder.configure({ placeholder: 'Start typing your notes…' }),
   AiPreviewExtension,
+  CommentHighlight,
 ]
