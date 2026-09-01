@@ -14,6 +14,9 @@ import { AiBubble } from '../editor/AiBubble'
 import { printNote } from '../editor/printDocument'
 import { US_LETTER, type PageGeometry } from '../editor/pagination/geometry'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
+import { CommentsSidebar } from '../comments/CommentsSidebar'
+import { useComments } from '../comments/useComments'
+import { SidePanel } from '../components/SidePanel'
 import { markdownToHtml, isInlineSuggestion, escapeHtml } from '../lib/markdown'
 import { aiPreviewKey } from '../editor/aiPreview'
 import {
@@ -101,6 +104,14 @@ export default function EditorPage() {
   // column would crowd the formatting toolbar into a horizontal scroll.
   // Ctrl/Cmd+Shift+A and the AI button both open it.
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  /*
+   * Which panel the docked column and the drawer are showing.
+   *
+   * One piece of state for both, so switching to Comments on a phone and then
+   * rotating to a tablet does not land on a different tab than the one just
+   * chosen.
+   */
+  const [panelTab, setPanelTab] = useState('assistant')
   const [editor, setEditor] = useState<Editor | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [editable, setEditable] = useState(true)
@@ -710,6 +721,43 @@ export default function EditorPage() {
 
   const collaborationKey = editorCollaboration ? `collab:${doc.id}` : 'solo'
 
+  /*
+   * Comments.
+   *
+   * Instantiated here rather than inside the panel because the panel is
+   * mounted twice -- docked on desktop, in the drawer on narrow screens -- and
+   * two controllers would mean two subscriptions, two fetches, and two sets of
+   * highlights fighting over the same editor.
+   */
+  const comments = useComments({
+    documentId: doc.id,
+    userId,
+    editor,
+    ydoc: editorCollaboration?.ydoc ?? null,
+  })
+
+  const commentsPanel = (
+    <CommentsSidebar
+      threads={comments.threads}
+      draft={comments.draft}
+      onSubmitDraft={(body) => void comments.submitDraft(body)}
+      onCancelDraft={comments.cancelDraft}
+      activeThreadId={comments.activeThreadId}
+      currentUserId={userId}
+      busy={comments.loading}
+      error={comments.error}
+      onSelect={comments.setActiveThreadId}
+      onReply={(threadId, body) => void comments.reply(threadId, body)}
+      onResolve={(threadId, resolved) => void comments.resolve(threadId, resolved)}
+      onDeleteThread={(threadId) => void comments.removeThread(threadId)}
+      onDeleteComment={(commentId) => void comments.removeComment(commentId)}
+    />
+  )
+
+  const openCommentCount = comments.threads.filter(
+    (view) => view.thread.resolvedAt === null,
+  ).length
+
   /**
    * Keeps what is on screen and saves it over the newer stored version.
    *
@@ -829,6 +877,20 @@ export default function EditorPage() {
           fullScreen={fullScreen}
           onGeometryChange={setGeometry}
           onPrint={handlePrint}
+          // Only offered where a comment can actually be stored and addressed
+          // to somebody: signed in, against a real note.
+          onAddComment={
+            userId
+              ? () => {
+                  // Anchor first: opening the panel moves focus and collapses
+                  // the selection this comment is about.
+                  comments.startDraft()
+                  setPanelTab('comments')
+                  setSidebarOpen(true)
+                }
+              : undefined
+          }
+          canAddComment={comments.canComment}
           header={doc.header as JSONContent}
           footer={doc.footer as JSONContent}
           pageNumbers={pageNumbers}
@@ -843,15 +905,33 @@ export default function EditorPage() {
           // Permanently docked on desktop; the drawer below covers narrow
           // screens, where a 360px column would leave no room to write.
           sidebar={
-            <AiSidebar
-              documentId={doc.id}
-              classId={doc.class_id}
-              selection={selection}
-              pendingMode={pendingMode}
-              onPendingHandled={() => setPendingMode(null)}
-              onApply={handleApplySuggestion}
-              onPreview={handlePreviewSuggestion}
-              active={panelDocked}
+            <SidePanel
+              tabs={[
+                {
+                  id: 'assistant',
+                  label: 'Assistant',
+                  content: (
+                    <AiSidebar
+                      documentId={doc.id}
+                      classId={doc.class_id}
+                      selection={selection}
+                      pendingMode={pendingMode}
+                      onPendingHandled={() => setPendingMode(null)}
+                      onApply={handleApplySuggestion}
+                      onPreview={handlePreviewSuggestion}
+                      active={panelDocked && panelTab === 'assistant'}
+                    />
+                  ),
+                },
+                {
+                  id: 'comments',
+                  label: 'Comments',
+                  count: openCommentCount,
+                  content: commentsPanel,
+                },
+              ]}
+              activeId={panelTab}
+              onSelect={setPanelTab}
             />
           }
         />
@@ -862,15 +942,35 @@ export default function EditorPage() {
         onClose={() => setSidebarOpen(false)}
         alwaysOverlay={fullScreen}
       >
-        <AiSidebar
-          documentId={doc.id}
-          classId={doc.class_id}
-          selection={selection}
-          pendingMode={pendingMode}
-          onPendingHandled={() => setPendingMode(null)}
-          onApply={handleApplySuggestion}
-          onPreview={handlePreviewSuggestion}
-          active={!panelDocked}
+        <SidePanel
+          tabs={[
+            {
+              id: 'assistant',
+              label: 'Assistant',
+              content: (
+                <AiSidebar
+                  documentId={doc.id}
+                  classId={doc.class_id}
+                  selection={selection}
+                  pendingMode={pendingMode}
+                  onPendingHandled={() => setPendingMode(null)}
+                  onApply={handleApplySuggestion}
+                  onPreview={handlePreviewSuggestion}
+                  // Only the visible copy may act on a pending action, or one
+                  // request becomes two.
+                  active={!panelDocked && panelTab === 'assistant'}
+                />
+              ),
+            },
+            {
+              id: 'comments',
+              label: 'Comments',
+              count: openCommentCount,
+              content: commentsPanel,
+            },
+          ]}
+          activeId={panelTab}
+          onSelect={setPanelTab}
         />
       </AiDrawer>
 

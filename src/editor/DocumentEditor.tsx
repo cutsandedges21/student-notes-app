@@ -155,6 +155,10 @@ interface DocumentEditorProps {
   onGeometryChange?: (geometry: PageGeometry) => void
   /** Passed through to the toolbar's print control. */
   onPrint?: () => void
+  /** Starts a comment on the selection. Absent where commenting is impossible. */
+  onAddComment?: () => void
+  /** False with nothing selected: a comment would have nothing to anchor to. */
+  canAddComment?: boolean
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
   /** Where the page number sits in the footer band, or `off`. */
@@ -182,6 +186,8 @@ export function DocumentEditor({
   fullScreen = false,
   onGeometryChange,
   onPrint,
+  onAddComment,
+  canAddComment = false,
   onHeaderChange,
   onFooterChange,
   pageNumbers = 'off',
@@ -473,6 +479,8 @@ export function DocumentEditor({
           compact={compact}
           onToggleCompact={onToggleCompact}
           onPrint={onPrint}
+          onAddComment={onAddComment}
+          canAddComment={canAddComment}
         />
       )}
       <div
