@@ -31,8 +31,24 @@ export default function SharedLinkPage() {
   const { token } = useParams<{ token: string }>()
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
-  const [state, setState] = useState<'working' | 'signed-out' | 'unavailable'>('working')
+  /*
+   * Three failures, not one.
+   *
+   * 'unavailable' means the token resolved to nothing -- unknown, revoked, or
+   * sharing switched off -- and those are deliberately indistinguishable,
+   * because telling them apart tells a stranger which notes exist.
+   *
+   * 'access-failed' is different in kind: the link is real and the note is
+   * shared, but recording the grant did not work. Reporting that as "this link
+   * isn't available" blames the link for a fault on our side and leaves the
+   * person with nothing to do, so it says what happened and offers a retry.
+   */
+  const [state, setState] = useState<
+    'working' | 'signed-out' | 'unavailable' | 'access-failed'
+  >('working')
   const [title, setTitle] = useState<string>('')
+  const [reason, setReason] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!token || authLoading) return
@@ -73,15 +89,24 @@ export default function SharedLinkPage() {
        * A failure here is fatal to the journey, so unlike before it is
        * reported rather than logged and stepped past.
        */
-      const grant = await redeemShareToken(token).catch((caught) => {
+      let grant: Awaited<ReturnType<typeof redeemShareToken>> = null
+      let failure: string | null = null
+      try {
+        grant = await redeemShareToken(token)
+      } catch (caught) {
         console.error('[SharedLinkPage] could not record access:', caught)
-        return null
-      })
+        failure = caught instanceof Error ? caught.message : String(caught)
+      }
 
       if (cancelled) return
 
       if (!grant) {
-        setState('unavailable')
+        // A null grant with no error means the token stopped resolving between
+        // the read above and here -- the owner revoking mid-open. An error
+        // means something else went wrong, and the difference matters to
+        // whoever has to fix it.
+        setReason(failure)
+        setState(failure ? 'access-failed' : 'unavailable')
         return
       }
 
@@ -91,7 +116,7 @@ export default function SharedLinkPage() {
     return () => {
       cancelled = true
     }
-  }, [token, user, authLoading, navigate])
+  }, [token, user, authLoading, navigate, attempt])
 
   if (state === 'working') return <LoadingScreen label="Opening the note" />
 
@@ -124,12 +149,40 @@ export default function SharedLinkPage() {
               </Link>
             </div>
           </>
+        ) : state === 'access-failed' ? (
+          <>
+            <h1 className="mt-4 text-lg font-medium text-ink">
+              Couldn’t open this note
+            </h1>
+            <p className="mt-2 text-sm text-ink-muted">
+              The link is valid, but access could not be recorded. This is a
+              fault on our side rather than a problem with the link.
+            </p>
+            {reason && (
+              <p className="mt-2 break-words rounded border border-line bg-surface-backdrop px-3 py-2 text-left font-mono text-xs text-ink-muted">
+                {reason}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setReason(null)
+                setState('working')
+                setAttempt((n) => n + 1)
+              }}
+              className="mt-6 rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            >
+              Try again
+            </button>
+          </>
         ) : (
           <>
             <h1 className="mt-4 text-lg font-medium text-ink">This link isn’t available</h1>
             <p className="mt-2 text-sm text-ink-muted">
-              The link may be wrong, or sharing may have been turned off for this
-              note.
+              Nothing here matches this link. Ask whoever shared it to check that
+              sharing is still switched on, and that the link has not been reset
+              since they sent it — resetting a link replaces it, and the old one
+              stops working.
             </p>
             <Link
               to="/classes"

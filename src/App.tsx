@@ -9,6 +9,7 @@ import ClassPage from './pages/ClassPage'
 import EditorPage from './pages/EditorPage'
 import SharedLinkPage from './pages/SharedLinkPage'
 import UpgradePage from './pages/UpgradePage'
+import { IntroSplash } from './components/IntroSplash'
 
 /**
  * No route requires an account. Signed-out visitors get the full app backed by
@@ -19,6 +20,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        {/* Over every route: a share link is an arrival too. */}
+        <IntroSplash />
         <Routes>
           <Route path="/" element={<Navigate to="/classes" replace />} />
           <Route path="/login" element={<LoginPage />} />
