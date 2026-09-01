@@ -5,6 +5,8 @@ import { Button } from '../components/ui/Button'
 import { CreateClassDialog } from '../components/CreateClassDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { StorageNotice } from '../components/StorageNotice'
+import { listSharedDocuments, type SharedWithMe } from '../services/sharing'
+import { sharedNoteHref } from '../lib/noteRef'
 import { MenuButton } from '../components/ui/MenuButton'
 import { useAuth } from '../contexts/AuthContext'
 import { createClass, deleteClass, fetchClasses, type ClassInput } from '../services/classes'
@@ -20,6 +22,30 @@ export default function ClassesPage() {
   const [error, setError] = useState<string | null>(null)
   /** The class awaiting confirmation, or null when nothing is being deleted. */
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
+  /*
+   * Notes other people shared, which are not filed in any class of yours --
+   * the class belongs to whoever shared it. Without somewhere to list them, a
+   * shared note could only be reached by finding the original link again.
+   */
+  const [sharedWithMe, setSharedWithMe] = useState<SharedWithMe[]>([])
+
+  // Reads `user` directly: `userId` is derived further down, and a hook cannot
+  // wait for it.
+  useEffect(() => {
+    if (!user) {
+      setSharedWithMe([])
+      return
+    }
+    let cancelled = false
+    void listSharedDocuments()
+      .then((rows) => {
+        if (!cancelled) setSharedWithMe(rows)
+      })
+      .catch((caught) => console.error('[ClassesPage] failed to list shared notes:', caught))
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   const userId = user?.id ?? null
 
@@ -129,6 +155,36 @@ export default function ClassesPage() {
               </li>
             ))}
           </ul>
+        )}
+        {sharedWithMe.length > 0 && (
+          <section className="mt-12">
+            <h2 className="font-ui text-sm font-medium uppercase tracking-wide text-ink-muted">
+              Shared with me
+            </h2>
+            <ul className="mt-4 divide-y divide-line border-y border-line">
+              {sharedWithMe.map((note) => (
+                <li key={note.id}>
+                  <Link
+                    to={sharedNoteHref(note.slug, note.id)}
+                    className="flex items-center justify-between gap-4 px-1 py-3 transition-colors hover:bg-surface-hover"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-ink">
+                        {note.title || 'Untitled note'}
+                      </span>
+                      <span className="block truncate text-xs text-ink-faint">
+                        {note.ownerName}
+                        {note.mode === 'view' ? ' · view only' : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-sm text-ink-faint">
+                      {formatRelativeTime(note.updatedAt)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
       </main>
 

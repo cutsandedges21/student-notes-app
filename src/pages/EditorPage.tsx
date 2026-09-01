@@ -26,7 +26,7 @@ import {
   type SuggestionTarget,
 } from '../editor/applySuggestion'
 import { describeDataError } from '../lib/dataErrors'
-import { noteHref, parseNoteRef } from '../lib/noteRef'
+import { noteHref, parseNoteRef, sharedNoteHref } from '../lib/noteRef'
 import type { ShareMode } from '../services/sharing'
 import { matchAiShortcut } from '../lib/shortcuts'
 import { ShortcutsDialog } from '../components/ShortcutsDialog'
@@ -45,7 +45,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useMinimumVisible } from '../hooks/useMinimumVisible'
 import { useFlushOnUnload } from '../hooks/useFlushOnUnload'
 import { createAutosaveScheduler } from '../lib/autosave'
-import { fetchClassBySlug } from '../services/classes'
+import { fetchClass, fetchClassBySlug } from '../services/classes'
 import {
   createDocument,
   deleteDocument,
@@ -103,6 +103,8 @@ export default function EditorPage() {
   const [conflict, setConflict] = useState<DocumentRow | null>(null)
   /** Set by the share menu; null until it has said anything. */
   const [liveShareMode, setLiveShareMode] = useState<ShareMode | null>(null)
+  /** True when this note belongs to somebody else and was shared with you. */
+  const [isSharedWithMe, setIsSharedWithMe] = useState(false)
   /** Non-null while the delete confirmation is up. */
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   /**
@@ -358,7 +360,9 @@ export default function EditorPage() {
   const showLoading = useMinimumVisible(!settled, LOADING_HOLD_MS)
 
   useEffect(() => {
-    if (!classSlug || !noteRef) return
+    // `classSlug` is absent on /notes/:noteRef, which is how a note shared
+    // with you is addressed: the class belongs to whoever shared it.
+    if (!noteRef) return
     /*
      * Wait for the session before looking anything up.
      *
@@ -374,7 +378,15 @@ export default function EditorPage() {
     void (async () => {
       try {
         const { documentId, slug } = parseNoteRef(noteRef)
-        const classRow = await fetchClassBySlug(userId, classSlug)
+
+        /*
+         * Owned notes are found through their class, because a note slug is
+         * only unique inside one. A shared note has no class of yours to look
+         * in, so it is found by id and its class read afterwards -- for the
+         * label only, and only if the owner's class is readable, which RLS
+         * allows exactly for notes you already have access to.
+         */
+        const ownedClass = classSlug ? await fetchClassBySlug(userId, classSlug) : null
 
         /*
          * The id is authoritative. The slug in the address is decoration and
@@ -385,11 +397,19 @@ export default function EditorPage() {
          */
         const docRow = documentId
           ? await fetchDocument(userId, documentId)
-          : classRow
-            ? await fetchDocumentBySlug(userId, classRow.id, slug)
+          : ownedClass
+            ? await fetchDocumentBySlug(userId, ownedClass.id, slug)
             : null
 
         if (cancelled) return
+
+        const classRow =
+          ownedClass ?? (docRow && userId ? await fetchClass(userId, docRow.class_id) : null)
+        if (cancelled) return
+
+        // Somebody else's note, opened through a share link.
+        const shared = Boolean(docRow && userId && docRow.user_id !== userId)
+        setIsSharedWithMe(shared)
 
         setKlass(classRow)
         setDoc(docRow)
@@ -406,7 +426,7 @@ export default function EditorPage() {
           : 'off'
         pageNumbersRef.current = storedPosition
         setPageNumbers(storedPosition)
-        classIdRef.current = classRow?.id ?? null
+        classIdRef.current = classRow?.id ?? docRow?.class_id ?? null
         classSlugRef.current = classRow?.slug ?? classSlug
         slugRef.current = docRow?.slug
         setLoaded(true)
@@ -423,11 +443,12 @@ export default function EditorPage() {
          * out from under the writer.
          */
         const canonical = docRow
-          ? noteHref(classRow?.slug ?? classSlug, docRow.slug, docRow.id)
+          ? shared || !classSlug
+            ? sharedNoteHref(docRow.slug, docRow.id)
+            : noteHref(classRow?.slug ?? classSlug, docRow.slug, docRow.id)
           : null
-        if (canonical && canonical !== `/classes/${classSlug}/${noteRef}`) {
-          navigate(canonical, { replace: true })
-        }
+        const here = classSlug ? `/classes/${classSlug}/${noteRef}` : `/notes/${noteRef}`
+        if (canonical && canonical !== here) navigate(canonical, { replace: true })
       } catch (caught) {
         console.error('[EditorPage] failed to load document:', caught)
         if (!cancelled) setLoaded(true)
@@ -846,8 +867,18 @@ export default function EditorPage() {
             saveMessage={saveFailure?.message}
             onShareModeChange={setLiveShareMode}
             onRetrySave={saveFailure ? retrySave : undefined}
-            backTo={`/classes/${klass?.slug ?? ''}`}
-            backLabel={klass ? `Back to ${klass.name}` : 'Back to class'}
+            // A note shared with you is not filed in a class of yours, so
+            // "back" is your notes, not somebody else's course.
+            backTo={isSharedWithMe ? '/classes' : `/classes/${klass?.slug ?? ''}`}
+            backLabel={
+              isSharedWithMe
+                ? klass
+                  ? `Shared with you · ${klass.name}`
+                  : 'Shared with you'
+                : klass
+                  ? `Back to ${klass.name}`
+                  : 'Back to class'
+            }
             aiOpen={sidebarOpen}
             onToggleAi={() => setSidebarOpen((open) => !open)}
             menubar={
@@ -855,7 +886,9 @@ export default function EditorPage() {
                 editor={editor}
                 onNewNote={() => void handleNewNote()}
                 onRename={focusTitle}
-                onDelete={() => setConfirmingDelete(true)}
+                // Deleting stays with the owner: the database refuses it for
+                // anyone else, so offering it would be a button that fails.
+                onDelete={isSharedWithMe ? undefined : () => setConfirmingDelete(true)}
                 showRuler={showRuler}
                 onToggleRuler={() => setShowRuler((on) => !on)}
                 compact={compact}

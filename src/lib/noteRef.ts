@@ -86,3 +86,15 @@ export function parseNoteRef(ref: string): NoteRef {
 export function noteHref(classSlug: string, slug: string, documentId: string): string {
   return `/classes/${classSlug}/${formatNoteRef(slug, documentId)}`
 }
+
+/**
+ * The path of a note that is not filed under a class you own.
+ *
+ * A note shared with you belongs to somebody else's class, which is theirs to
+ * organise and not yours to browse. Addressing it under /classes/<their slug>
+ * would put a course you are not enrolled in into your own navigation; this
+ * keeps it addressable without pretending it is filed anywhere of yours.
+ */
+export function sharedNoteHref(slug: string, documentId: string): string {
+  return `/notes/${formatNoteRef(slug, documentId)}`
+}

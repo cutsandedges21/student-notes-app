@@ -170,7 +170,8 @@ interface DocumentMenubarProps {
   editor: Editor | null
   onNewNote: () => void
   onRename: () => void
-  onDelete: () => void
+  /** Absent for a note shared with you: only its owner may delete it. */
+  onDelete?: () => void
   showRuler: boolean
   onToggleRuler: () => void
   compact: boolean
@@ -286,7 +287,11 @@ export function DocumentMenubar({
           separatorBefore: true,
         },
         { label: 'Print', shortcut: 'Ctrl+P', onSelect: onPrint },
-        { label: 'Delete note', onSelect: onDelete, separatorBefore: true },
+        // Omitted rather than disabled for a note shared with you: the row
+        // would explain a permission nobody asked about.
+        ...(onDelete
+          ? [{ label: 'Delete note', onSelect: onDelete, separatorBefore: true }]
+          : []),
       ],
     },
     {

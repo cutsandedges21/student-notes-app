@@ -7,7 +7,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import ClassesPage from './pages/ClassesPage'
 import ClassPage from './pages/ClassPage'
 import EditorPage from './pages/EditorPage'
-import SharedDocumentPage from './pages/SharedDocumentPage'
+import SharedLinkPage from './pages/SharedLinkPage'
 import UpgradePage from './pages/UpgradePage'
 
 /**
@@ -28,7 +28,7 @@ export default function App() {
           {/* Public: a share link must open without an account. What the
               visitor can then do is decided by the owner's chosen mode and
               whether they sign in. */}
-          <Route path="/shared/:token" element={<SharedDocumentPage />} />
+          <Route path="/shared/:token" element={<SharedLinkPage />} />
           <Route path="/upgrade" element={<UpgradePage />} />
           <Route path="/classes" element={<ClassesPage />} />
           <Route path="/classes/:classSlug" element={<ClassPage />} />
@@ -46,6 +46,13 @@ export default function App() {
             canonical form on load.
           */}
           <Route path="/classes/:classSlug/:noteRef" element={<EditorPage />} />
+          {/*
+            A note shared with you. Same page, same editor, same everything --
+            it is a real note you have real access to, so it opens in the real
+            editor rather than in a read-only imitation of one. It has no class
+            segment because the class belongs to whoever shared it.
+          */}
+          <Route path="/notes/:noteRef" element={<EditorPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

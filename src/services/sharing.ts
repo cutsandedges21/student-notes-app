@@ -413,3 +413,42 @@ export async function copySharedDocument(
   // to keep the address readable.
   return { classSlug: classSlug!, noteSlug: saved?.slug ?? copy.slug, noteId: copy.id }
 }
+
+/** A note somebody else shared with the signed-in user. */
+export interface SharedWithMe {
+  id: string
+  title: string
+  slug: string
+  ownerName: string
+  mode: 'view' | 'edit'
+  updatedAt: string
+}
+
+/**
+ * Notes shared with the signed-in user.
+ *
+ * A grant is what a redeemed share link leaves behind, so this is the list of
+ * links they have opened. It is the only place those notes appear: they are
+ * not filed in any class of the reader's, because the class belongs to whoever
+ * shared it.
+ */
+export async function listSharedDocuments(): Promise<SharedWithMe[]> {
+  const { data, error } = await supabase.rpc('list_shared_documents')
+  if (error) throw error
+
+  return ((data ?? []) as {
+    id: string
+    title: string
+    slug: string
+    owner_name: string
+    mode: 'view' | 'edit'
+    updated_at: string
+  }[]).map((row) => ({
+    id: row.id,
+    title: row.title,
+    slug: row.slug,
+    ownerName: row.owner_name,
+    mode: row.mode,
+    updatedAt: row.updated_at,
+  }))
+}
