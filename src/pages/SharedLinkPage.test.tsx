@@ -23,6 +23,7 @@ const auth = vi.hoisted(() => ({ user: null as User | null, loading: false }))
 const api = vi.hoisted(() => ({
   fetchSharedDocument: vi.fn(),
   redeemShareToken: vi.fn(),
+  canViewDocument: vi.fn(),
 }))
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -32,6 +33,7 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../services/sharing', () => ({
   fetchSharedDocument: api.fetchSharedDocument,
   redeemShareToken: api.redeemShareToken,
+  canViewDocument: api.canViewDocument,
 }))
 
 const signedInAs = (id: string) => ({ id }) as User
@@ -71,6 +73,8 @@ beforeEach(() => {
   auth.loading = false
   api.fetchSharedDocument.mockReset()
   api.redeemShareToken.mockReset()
+  // No pre-existing access unless a test says so.
+  api.canViewDocument.mockReset().mockResolvedValue(false)
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -148,6 +152,20 @@ describe('SharedLinkPage', () => {
 
       api.redeemShareToken.mockResolvedValue({ documentId: DOC, mode: 'edit' })
       await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      expect(await screen.findByText('EDITOR /notes')).toBeInTheDocument()
+    })
+
+    /*
+     * A grant that already exists is enough. Refusing to open a note somebody
+     * can demonstrably access, because re-recording that access failed, would
+     * lose them the note over bookkeeping.
+     */
+    it('opens the note anyway when access already exists', async () => {
+      api.redeemShareToken.mockRejectedValue(new Error('conflict'))
+      api.canViewDocument.mockResolvedValue(true)
+
+      open()
 
       expect(await screen.findByText('EDITOR /notes')).toBeInTheDocument()
     })

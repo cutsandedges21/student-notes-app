@@ -452,3 +452,22 @@ export async function listSharedDocuments(): Promise<SharedWithMe[]> {
     updatedAt: row.updated_at,
   }))
 }
+
+/**
+ * Whether the signed-in user can already open a document.
+ *
+ * Asks the same function the RLS policies ask, so the answer is the one that
+ * actually governs access rather than a second opinion about it.
+ *
+ * Used as a fallback when redeeming a share link fails: a grant that already
+ * exists is enough, and refusing to open a note somebody demonstrably has
+ * access to -- because re-recording that access errored -- would lock them out
+ * over bookkeeping.
+ */
+export async function canViewDocument(documentId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('can_view_document', {
+    p_document_id: documentId,
+  })
+  if (error) throw error
+  return data === true
+}

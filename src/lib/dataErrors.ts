@@ -63,3 +63,36 @@ export function describeDataError(error: unknown): string {
 
   return raw ? `Something went wrong: ${raw}` : 'Something went wrong. Try again.'
 }
+
+/**
+ * The technical detail behind a failure, for a person who has to report it.
+ *
+ * `describeDataError` says what to do; this says what happened. Supabase
+ * returns plain objects rather than Error instances, so `String(error)` on one
+ * yields "[object Object]" -- which is what a screen asking somebody to report
+ * a fault showed, telling them and us nothing.
+ */
+export function detailDataError(error: unknown): string {
+  if (!error) return ''
+
+  const code = read(error, 'code')
+  const message = read(error, 'message')
+  const hint =
+    typeof error === 'object' && error !== null && 'hint' in error
+      ? String((error as Record<string, unknown>).hint ?? '')
+      : ''
+  const details =
+    typeof error === 'object' && error !== null && 'details' in error
+      ? String((error as Record<string, unknown>).details ?? '')
+      : ''
+
+  const parts = [
+    code && `[${code}]`,
+    message || (error instanceof Error ? error.message : ''),
+    details && details !== 'null' && `(${details})`,
+    hint && hint !== 'null' && `Hint: ${hint}`,
+  ].filter(Boolean)
+
+  // Never "[object Object]": if nothing readable came back, say that plainly.
+  return parts.length > 0 ? parts.join(' ') : 'No details were returned.'
+}

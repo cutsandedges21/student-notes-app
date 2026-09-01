@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AppDocIcon } from '../editor/DocsIcons'
 import { LoadingScreen } from '../components/LoadingScreen'
 import { useAuth } from '../contexts/AuthContext'
-import { fetchSharedDocument, redeemShareToken } from '../services/sharing'
+import { canViewDocument, fetchSharedDocument, redeemShareToken } from '../services/sharing'
 import { loginHref, signUpHref } from '../lib/returnTo'
+import { describeDataError, detailDataError } from '../lib/dataErrors'
 import { noteHref, sharedNoteHref } from '../lib/noteRef'
 
 /**
@@ -95,10 +96,31 @@ export default function SharedLinkPage() {
         grant = await redeemShareToken(token)
       } catch (caught) {
         console.error('[SharedLinkPage] could not record access:', caught)
-        failure = caught instanceof Error ? caught.message : String(caught)
+        // Supabase errors are plain objects, so String() on one gives
+        // "[object Object]" -- which is what this screen used to show.
+        failure = `${describeDataError(caught)}
+
+${detailDataError(caught)}`
       }
 
       if (cancelled) return
+
+      /*
+       * A failed grant is not automatically a closed door. The row may already
+       * exist from an earlier visit, in which case access is real and only the
+       * re-recording of it went wrong -- locking somebody out of a note they
+       * can demonstrably open would be losing them the note over bookkeeping.
+       * Asks the same function the RLS policies ask, so this is the answer
+       * that actually governs access.
+       */
+      if (!grant && failure) {
+        const already = await canViewDocument(shared.id).catch(() => false)
+        if (cancelled) return
+        if (already) {
+          navigate(sharedNoteHref(shared.slug, shared.id), { replace: true })
+          return
+        }
+      }
 
       if (!grant) {
         // A null grant with no error means the token stopped resolving between
@@ -159,7 +181,7 @@ export default function SharedLinkPage() {
               fault on our side rather than a problem with the link.
             </p>
             {reason && (
-              <p className="mt-2 break-words rounded border border-line bg-surface-backdrop px-3 py-2 text-left font-mono text-xs text-ink-muted">
+              <p className="mt-2 whitespace-pre-wrap break-words rounded border border-line bg-surface-backdrop px-3 py-2 text-left font-mono text-xs text-ink-muted">
                 {reason}
               </p>
             )}
