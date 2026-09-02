@@ -7,6 +7,8 @@
  * Google's icon set -- these are our own paths in the same silhouette.
  */
 
+import { useId } from 'react'
+
 interface IconProps {
   className?: string
   size?: number
@@ -82,6 +84,14 @@ export function LineSpacingIcon({ size = 18, className }: IconProps) {
  * centre; a plain diamond would read as a generic shape rather than a spark.
  */
 export function SparkIcon({ size = 20, className }: IconProps) {
+  /*
+   * A gradient is referenced by id, and ids are global to the document. With a
+   * fixed one, every spark on the page pointed at whichever definition the
+   * browser met first -- so a star rendered from a gradient belonging to a
+   * different, possibly hidden, instance, and painted as nothing.
+   */
+  const gradientId = `margin-spark-${useId()}`
+
   return (
     <svg
       width={size}
@@ -92,14 +102,14 @@ export function SparkIcon({ size = 20, className }: IconProps) {
       focusable="false"
     >
       <defs>
-        <linearGradient id="margin-spark" x1="0" y1="1" x2="1" y2="0">
+        <linearGradient id={gradientId} x1="0" y1="1" x2="1" y2="0">
           <stop offset="0%" stopColor="#4285f4" />
           <stop offset="45%" stopColor="#9b72cb" />
           <stop offset="100%" stopColor="#d96570" />
         </linearGradient>
       </defs>
       <path
-        fill="url(#margin-spark)"
+        fill={`url(#${gradientId})`}
         d="M12 2C12.6 7.2 16.8 11.4 22 12C16.8 12.6 12.6 16.8 12 22C11.4 16.8 7.2 12.6 2 12C7.2 11.4 11.4 7.2 12 2Z"
       />
     </svg>

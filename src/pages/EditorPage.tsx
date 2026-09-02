@@ -29,6 +29,7 @@ import { PageSetupDialog } from '../editor/PageSetupDialog'
 import { AiSidebar } from '../ai/AiSidebar'
 import { AiConversationProvider, type AiSelection } from '../ai/AiConversation'
 import { AiDock } from '../ai/AiDock'
+import { afterPaint, flyIn, flyOut, riseIn, visible } from '../lib/motion'
 import { CommentsSidebar } from '../comments/CommentsSidebar'
 import { useComments } from '../comments/useComments'
 import { VersionHistoryPanel } from '../history/VersionHistoryPanel'
@@ -156,7 +157,24 @@ export default function EditorPage() {
     }
   })
 
-  const moveAi = useCallback((next: 'dock' | 'panel') => {
+  /**
+   * Moves the assistant between the bar and the column.
+   *
+   * Animated as one move rather than two: the surface being left is sent
+   * toward where the other will appear, and the arrival only starts once that
+   * has landed. The two are different components in different places in the
+   * tree, so nothing but sequencing makes them read as the same thing
+   * travelling.
+   */
+  const moveAi = useCallback(async (next: 'dock' | 'panel') => {
+    // The panel is on the left, so that is the direction of travel.
+    await flyOut(
+      next === 'panel'
+        ? document.getElementById('ai-dock')
+        : visible('[data-ai-surface="panel"]'),
+      'left',
+    )
+
     setAiPlacement(next)
     try {
       localStorage.setItem('margin:ai-placement', next)
@@ -167,6 +185,11 @@ export default function EditorPage() {
       setPanelTab('assistant')
       setSidebarOpen(true)
     }
+
+    // React has to have rendered the arriving surface before it can be moved.
+    await afterPaint()
+    if (next === 'panel') flyIn(visible('[data-ai-surface="panel"]'), 'left')
+    else riseIn(document.getElementById('ai-dock'))
   }, [])
   const [editor, setEditor] = useState<Editor | null>(null)
   /*
@@ -1255,7 +1278,7 @@ export default function EditorPage() {
                       {
                         id: 'assistant',
                         label: 'Assistant',
-                        content: <AiSidebar onMoveToDock={() => moveAi('dock')} />,
+                        content: <AiSidebar onMoveToDock={() => void moveAi('dock')} />,
                       },
                     ]
                   : []),
@@ -1290,7 +1313,7 @@ export default function EditorPage() {
                   {
                     id: 'assistant',
                     label: 'Assistant',
-                    content: <AiSidebar onMoveToDock={() => moveAi('dock')} />,
+                    content: <AiSidebar onMoveToDock={() => void moveAi('dock')} />,
                   },
                 ]
               : []),
@@ -1419,7 +1442,7 @@ export default function EditorPage() {
       />
 
       {aiPlacement === 'dock' ? (
-        <AiDock onMoveToPanel={() => moveAi('panel')} />
+        <AiDock onMoveToPanel={() => void moveAi('panel')} />
       ) : (
         // The bubble is the way back to a panel that has been closed, and only
         // matters in full screen, where there is no other chrome to reopen it.

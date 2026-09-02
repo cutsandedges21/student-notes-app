@@ -220,7 +220,11 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    // Marked so the move between here and the docked bar animates this
+    // surface rather than the whole panel column. An attribute, not an id:
+    // the panel is mounted twice -- docked and in the drawer -- and only one
+    // of them is on screen.
+    <div data-ai-surface="panel" className="flex h-full flex-col">
       <div className="flex shrink-0 items-center gap-1 px-2 py-2">
         <IconButton label="Menu" onClick={() => setMenuOpen(true)}>
           <Menu size={18} />
