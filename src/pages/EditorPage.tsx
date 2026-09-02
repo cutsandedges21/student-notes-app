@@ -198,6 +198,27 @@ export default function EditorPage() {
   const headerRef = useRef<JSONContent | null>(null)
   const footerRef = useRef<JSONContent | null>(null)
   const pageNumbersRef = useRef<PageNumberPosition>('off')
+  /*
+   * Starred lives on the document row, not in this browser.
+   *
+   * It was a localStorage flag until now, which is what the migration adding
+   * `documents.starred` was written to fix: a star was invisible on a second
+   * device, and a guest's stars were dropped on the way into an account. The
+   * column, the guest store and the migration all carried it already; only the
+   * button was still writing to localStorage.
+   */
+  const starredRef = useRef(false)
+  const [starred, setStarred] = useState(false)
+  /*
+   * Whether the star has been touched in this session.
+   *
+   * `saveDocument` sends `starred` only when it is supplied, deliberately: a
+   * database that has not run the migration adding the column rejects the
+   * whole write, and that would turn a missing column into every save failing
+   * rather than only starring failing. Sending it just for the note whose star
+   * was actually pressed keeps the blast radius the size of the feature.
+   */
+  const starTouchedRef = useRef(false)
   const classIdRef = useRef<string | null>(null)
   const classSlugRef = useRef<string | undefined>(classSlug)
   const slugRef = useRef<string | undefined>(undefined)
@@ -264,6 +285,7 @@ export default function EditorPage() {
           header: headerRef.current ?? undefined,
           footer: footerRef.current ?? undefined,
           pageNumbers: pageNumbersRef.current,
+          ...(starTouchedRef.current ? { starred: starredRef.current } : {}),
         })
 
         if (result.status === 'stale') {
@@ -439,6 +461,12 @@ export default function EditorPage() {
           : 'off'
         pageNumbersRef.current = storedPosition
         setPageNumbers(storedPosition)
+        // Read from the row, so the star is the same on every device. A row
+        // written before the column existed comes back undefined, not false.
+        const storedStar = docRow?.starred === true
+        starredRef.current = storedStar
+        starTouchedRef.current = false
+        setStarred(storedStar)
         classIdRef.current = classRow?.id ?? docRow?.class_id ?? null
         classSlugRef.current = classRow?.slug ?? classSlug
         slugRef.current = docRow?.slug
@@ -998,6 +1026,15 @@ export default function EditorPage() {
             }
             aiOpen={sidebarOpen}
             onToggleAi={() => setSidebarOpen((open) => !open)}
+            starred={starred}
+            onStarredChange={(next) => {
+              starredRef.current = next
+              starTouchedRef.current = true
+              setStarred(next)
+              // Same path as the page-number and header settings: put it in
+              // the ref the save reads from, then schedule one.
+              scheduleCurrent()
+            }}
             commentCount={openCommentCount}
             // Reading the discussion needs no permission to add to it; the
             // button is hidden only where there is no discussion to read.

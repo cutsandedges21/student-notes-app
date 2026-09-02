@@ -41,9 +41,18 @@ interface DocsTitleBarProps {
   commentCount?: number
   /** Absent where commenting is impossible, in which case no button appears. */
   onOpenComments?: () => void
+  /*
+   * Starred is a property of the note, not of this browser.
+   *
+   * It was a localStorage flag read during render, which is what the migration
+   * adding `documents.starred` was written to fix: a star was invisible on a
+   * second device, and a guest's stars were dropped on the way into an
+   * account. The column, the guest store and the migration all carried it
+   * already -- only this button was still writing to localStorage.
+   */
+  starred: boolean
+  onStarredChange: (starred: boolean) => void
 }
-
-const STAR_PREFIX = 'margin:starred:'
 
 /** Round icon button sitting directly on the white chrome. */
 function ChromeButton({
@@ -92,34 +101,21 @@ export function DocsTitleBar({
   onToggleAi,
   commentCount = 0,
   onOpenComments,
+  starred,
+  onStarredChange,
 }: DocsTitleBarProps) {
   const { profile, session, signOut } = useAuth()
   const navigate = useNavigate()
   const signedIn = Boolean(session)
 
 
-  const [starOverrides, setStarOverrides] = useState<Record<string, boolean>>({})
   const [accountOpen, setAccountOpen] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleteInput, setDeleteInput] = useState('')
   const [deleting, setDeleting] = useState(false)
   const accountRef = useRef<HTMLDivElement>(null)
 
-  // Starring is a local bookmark: there is no column for it on the document,
-  // and inventing one just to light up an icon would be a schema change in
-  // service of decoration.
-  const starKey = STAR_PREFIX + documentId
-
-  // Read straight through to storage during render, keyed by document, so
-  // navigating between notes shows the right state without an effect that has
-  // to chase the id.
-  const starred = starOverrides[documentId] ?? window.localStorage.getItem(starKey) === '1'
-
-  const toggleStar = () => {
-    if (starred) window.localStorage.removeItem(starKey)
-    else window.localStorage.setItem(starKey, '1')
-    setStarOverrides((current) => ({ ...current, [documentId]: !starred }))
-  }
+  const toggleStar = () => onStarredChange(!starred)
 
 
   // Same dismissal contract as every other transient surface in the app.

@@ -41,6 +41,8 @@ function setup(props: Partial<Parameters<typeof DocsTitleBar>[0]> = {}) {
         menubar={null}
         aiOpen={false}
         onToggleAi={vi.fn()}
+        starred={false}
+        onStarredChange={vi.fn()}
         onOpenComments={onOpenComments}
         {...props}
       />
@@ -85,5 +87,60 @@ describe('DocsTitleBar comments', () => {
     setup({ onOpenComments: undefined })
 
     expect(screen.queryByRole('button', { name: /comments/i })).toBeNull()
+  })
+})
+
+/**
+ * Starring.
+ *
+ * The migration that added `documents.starred` says why this matters: as a
+ * localStorage flag a star was invisible on a second device, and a guest's
+ * stars were dropped on the way into an account. The column, the guest store
+ * and the migration all carried it; only this button did not.
+ */
+describe('DocsTitleBar starring', () => {
+  it('shows the state it is given, not the state of this browser', () => {
+    setup({ starred: true })
+
+    expect(screen.getByRole('button', { name: 'Remove star' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('reports the new value upward rather than storing it locally', async () => {
+    const onStarredChange = vi.fn()
+    setup({ starred: false, onStarredChange })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Star' }))
+
+    expect(onStarredChange).toHaveBeenCalledWith(true)
+    // Nothing is written here; the note's row is the only record of it.
+    expect(localStorage.getItem('margin:starred:doc-1')).toBeNull()
+  })
+
+  it('un-stars', async () => {
+    const onStarredChange = vi.fn()
+    setup({ starred: true, onStarredChange })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove star' }))
+
+    expect(onStarredChange).toHaveBeenCalledWith(false)
+  })
+
+  /**
+   * The old implementation read localStorage during render, keyed by document
+   * id. A stale value left over from that era must not resurrect a star the
+   * server says is gone.
+   */
+  it('ignores a leftover localStorage flag', () => {
+    localStorage.setItem('margin:starred:doc-1', '1')
+
+    setup({ starred: false })
+
+    expect(screen.getByRole('button', { name: 'Star' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 })
