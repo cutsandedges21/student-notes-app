@@ -53,6 +53,7 @@ const TIERS: Tier[] = [
       'Real-time collaboration, with live cursors',
       'Comments and replies, anchored to the passage',
       'Share links, view or edit, revocable',
+      'Version history you can browse and restore',
       'AI assistant: improve, check, explain, exam-ready',
       'Print, and save as PDF through your browser',
     ],
@@ -65,7 +66,6 @@ const TIERS: Tier[] = [
     price: '—',
     blurb: 'Being built. Not available yet, and not charged for.',
     features: [
-      'Version history you can browse and restore',
       'Export to Word and Markdown',
       'Offline editing on mobile',
       'Import from .docx and .md',

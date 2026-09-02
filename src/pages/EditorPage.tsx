@@ -22,6 +22,8 @@ import { US_LETTER, type PageGeometry } from '../editor/pagination/geometry'
 import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
 import { CommentsSidebar } from '../comments/CommentsSidebar'
 import { useComments } from '../comments/useComments'
+import { VersionHistoryPanel } from '../history/VersionHistoryPanel'
+import { useVersionHistory } from '../history/useVersionHistory'
 import { SidePanel } from '../components/SidePanel'
 import { markdownToHtml, isInlineSuggestion, escapeHtml } from '../lib/markdown'
 import { aiPreviewKey } from '../editor/aiPreview'
@@ -789,6 +791,23 @@ export default function EditorPage() {
     ydoc: collaboration.active ? collaboration.ydoc : null,
   })
 
+  /*
+   * Version history. Above the early returns for the same reason comments are,
+   * and it was below them until oxlint caught it -- the rules-of-hooks error is
+   * the only warning that stands between this and a blank page.
+   *
+   * `active` is what defers the request: history is fetched when the panel is
+   * first looked at rather than when the note opens, because every note has
+   * history and almost no session reads it.
+   */
+  const history = useVersionHistory({
+    documentId: doc?.id ?? '',
+    userId,
+    editor,
+    active: sidebarOpen && panelTab === 'history',
+    currentContent: () => editor?.getJSON() ?? null,
+  })
+
   if (showLoading || !settled) return <LoadingScreen label="Loading note" />
 
   /*
@@ -893,6 +912,23 @@ export default function EditorPage() {
     setPanelTab('comments')
     setSidebarOpen(true)
   }
+
+  const historyPanel = (
+    <VersionHistoryPanel
+      versions={history.versions}
+      loading={history.loading}
+      error={history.error}
+      previewId={history.previewId}
+      previewContent={history.previewContent}
+      busy={history.busy}
+      hasMore={history.hasMore}
+      currentUserId={userId}
+      onPreview={history.preview}
+      onRestore={history.restore}
+      onSaveVersion={history.saveVersion}
+      onLoadMore={history.loadMore}
+    />
+  )
 
   /**
    * Keeps what is on screen and saves it over the newer stored version.
@@ -1079,6 +1115,11 @@ export default function EditorPage() {
                   count: openCommentCount,
                   content: commentsPanel,
                 },
+                {
+                  id: 'history',
+                  label: 'History',
+                  content: historyPanel,
+                },
               ]}
               activeId={panelTab}
               onSelect={setPanelTab}
@@ -1117,6 +1158,11 @@ export default function EditorPage() {
               label: 'Comments',
               count: openCommentCount,
               content: commentsPanel,
+            },
+            {
+              id: 'history',
+              label: 'History',
+              content: historyPanel,
             },
           ]}
           activeId={panelTab}
