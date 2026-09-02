@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import { Upload } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import { cn } from '../lib/cn'
 import { normaliseImageSrc } from './imageSrc'
 
 /**
@@ -20,18 +22,30 @@ import { normaliseImageSrc } from './imageSrc'
 
 export function ImageDialog({
   open,
+  canUpload = false,
+  uploading = false,
+  uploadError = null,
+  onUpload,
   onSubmit,
   onClose,
 }: {
   open: boolean
+  /** False while signed out: there is no account to file an upload under. */
+  canUpload?: boolean
+  uploading?: boolean
+  uploadError?: string | null
+  onUpload?: (file: File, alt: string) => void
   onSubmit: (image: { src: string; alt: string }) => void
   onClose: () => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [value, setValue] = useState('')
   const [alt, setAlt] = useState('')
   const [error, setError] = useState<string | null>(null)
+  /** Dragging over the drop zone, for the affordance only. */
+  const [over, setOver] = useState(false)
 
   useEffect(() => {
     const node = ref.current
@@ -40,7 +54,10 @@ export function ImageDialog({
       setValue('')
       setAlt('')
       setError(null)
+      setOver(false)
       node.showModal()
+      // Focus the address field rather than the file button: it is the one
+      // that works signed out, and the file button is reachable by Tab.
       inputRef.current?.focus()
     }
     if (!open && node.open) node.close()
@@ -54,6 +71,11 @@ export function ImageDialog({
       return
     }
     onSubmit({ src: result.src, alt: alt.trim() })
+  }
+
+  /** Alt text is shared by both routes: it describes the image, not the source. */
+  function take(file: File | undefined) {
+    if (file && onUpload) onUpload(file, alt.trim())
   }
 
   return (
@@ -71,7 +93,71 @@ export function ImageDialog({
           Insert image
         </h2>
 
-        <div className="mt-4">
+        {canUpload && (
+          <div
+            onDragOver={(event) => {
+              event.preventDefault()
+              setOver(true)
+            }}
+            onDragLeave={() => setOver(false)}
+            onDrop={(event) => {
+              event.preventDefault()
+              setOver(false)
+              take(event.dataTransfer.files[0])
+            }}
+            className={cn(
+              'mt-4 grid place-items-center rounded border border-dashed px-4 py-6 text-center',
+              over ? 'border-accent bg-accent/5' : 'border-line',
+            )}
+          >
+            <Upload size={18} className="mb-2 text-ink-faint" />
+            <p className="text-sm text-ink-muted">
+              Drop an image here, or{' '}
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="font-medium text-accent underline underline-offset-2 disabled:opacity-60"
+              >
+                choose a file
+              </button>
+              .
+            </p>
+            <p className="mt-1 text-xs text-ink-faint">
+              You can also paste one straight into the note.
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,image/avif"
+              className="sr-only"
+              aria-label="Image file"
+              onChange={(event) => {
+                take(event.target.files?.[0])
+                // Cleared so choosing the same file twice fires again.
+                event.target.value = ''
+              }}
+            />
+          </div>
+        )}
+
+        {uploading && (
+          <p role="status" className="mt-2 text-sm text-ink-muted">
+            Uploading…
+          </p>
+        )}
+        {uploadError && (
+          <p role="alert" className="mt-2 text-sm text-danger">
+            {uploadError}
+          </p>
+        )}
+
+        <div className={canUpload ? 'mt-5' : 'mt-4'}>
+          {canUpload && (
+            <p className="mb-2 text-xs uppercase tracking-wide text-ink-faint">
+              Or by address
+            </p>
+          )}
           <Input
             ref={inputRef}
             label="Image address"

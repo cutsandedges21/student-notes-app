@@ -22,6 +22,7 @@ import { Ruler } from './Ruler'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
 import { Pencil } from 'lucide-react'
 import { AI_SIDEBAR_SIDE } from '../constants/layout'
+import { imageFilesFrom } from '../services/imageUpload'
 import { cn } from '../lib/cn'
 
 const DEFAULT_MARGIN = 96
@@ -170,6 +171,15 @@ interface DocumentEditorProps {
   onInsertImage?: () => void
   onFind?: () => void
   onEquation?: () => void
+  /**
+   * Images pasted or dropped into the note.
+   *
+   * Absent while signed out, in which case the default handling stands and a
+   * pasted image is ignored the way it always was -- there is no account to
+   * file an upload under, and inlining a data URL into a document held in
+   * localStorage is a quota failure dressed up as a feature.
+   */
+  onImageFiles?: (files: File[]) => void
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
   /** Where the page number sits in the footer band, or `off`. */
@@ -203,6 +213,7 @@ export function DocumentEditor({
   onInsertImage,
   onFind,
   onEquation,
+  onImageFiles,
   onHeaderChange,
   onFooterChange,
   pageNumbers = 'off',
@@ -288,6 +299,34 @@ export function DocumentEditor({
       attributes: {
         class: 'outline-none',
         'aria-label': 'Note content',
+      },
+      /*
+       * Pasting and dropping an image file.
+       *
+       * This is the path that matters: a student screenshots a lecture slide
+       * and presses Ctrl+V. Without it the clipboard's image is dropped
+       * silently -- ProseMirror has no handler for an image file and simply
+       * ignores it -- and the note looks like it swallowed the paste.
+       *
+       * Returning false for anything that is not an image file leaves the
+       * default handling alone, which is what pastes text, HTML and the
+       * editor's own slices.
+       */
+      handlePaste: (_view, event) => {
+        if (!onImageFiles) return false
+        const files = imageFilesFrom(event.clipboardData)
+        if (files.length === 0) return false
+        event.preventDefault()
+        onImageFiles(files)
+        return true
+      },
+      handleDrop: (_view, event) => {
+        if (!onImageFiles) return false
+        const files = imageFilesFrom((event as DragEvent).dataTransfer)
+        if (files.length === 0) return false
+        event.preventDefault()
+        onImageFiles(files)
+        return true
       },
     },
     /*

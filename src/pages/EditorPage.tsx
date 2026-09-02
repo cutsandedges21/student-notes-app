@@ -40,6 +40,7 @@ import { matchAiShortcut } from '../lib/shortcuts'
 import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { LoadingScreen } from '../components/LoadingScreen'
 import { snapshotDocument } from '../services/documents'
+import { uploadNoteImage } from '../services/imageUpload'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
 import { type SaveState } from '../components/SaveStatus'
@@ -115,6 +116,9 @@ export default function EditorPage() {
   const [isSharedWithMe, setIsSharedWithMe] = useState(false)
   /** Non-null while the delete confirmation is up. */
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  /** Image upload progress and failure, shared by the dialog, paste and drop. */
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
   /**
    * Errors from actions the writer took deliberately -- creating, deleting.
    * Shown in the page rather than through window.alert, which blocks the main
@@ -935,6 +939,40 @@ export default function EditorPage() {
       }
     : undefined
 
+  /*
+   * Uploading an image, from the dialog, a paste, or a drop.
+   *
+   * One path for all three so they cannot disagree about size limits, allowed
+   * types, or what happens when the upload fails -- which is the failure mode
+   * this codebase keeps producing when two surfaces implement the same action.
+   *
+   * Files are uploaded in sequence rather than in parallel. A paste of eight
+   * screenshots would otherwise open eight connections and insert the images
+   * in whatever order they happened to finish, which is not the order they
+   * were pasted in.
+   */
+  const uploadImages = async (files: File[], alt = '') => {
+    if (!editor) return
+    setImageUploading(true)
+    setImageError(null)
+
+    try {
+      for (const file of files) {
+        const result = await uploadNoteImage(userId, file)
+        if (!result.ok) {
+          setImageError(result.error)
+          // Stop rather than press on: the rest are likely to fail the same
+          // way, and eight identical errors is not eight times the news.
+          return
+        }
+        editor.chain().focus().setImage({ src: result.src, alt }).run()
+      }
+      dialogs.close()
+    } finally {
+      setImageUploading(false)
+    }
+  }
+
   /** Shows the existing discussion without starting a new thread. */
   const openComments = () => {
     setPanelTab('comments')
@@ -1103,6 +1141,7 @@ export default function EditorPage() {
           onInsertImage={dialogs.openImage}
           onFind={dialogs.toggleFind}
           onEquation={dialogs.openEquation}
+          onImageFiles={userId ? (files) => void uploadImages(files) : undefined}
           onSelectionChange={handleSelectionChange}
           showRuler={showRuler}
           compact={compact}
@@ -1268,8 +1307,18 @@ export default function EditorPage() {
 
       <ImageDialog
         open={dialogs.open === 'image'}
+        // Signed out there is no account to file an upload under; the dialog
+        // then offers the address field alone rather than a drop zone that
+        // always refuses.
+        canUpload={Boolean(userId)}
+        uploading={imageUploading}
+        uploadError={imageError}
+        onUpload={(file, alt) => void uploadImages([file], alt)}
         onSubmit={dialogs.insertImage}
-        onClose={dialogs.close}
+        onClose={() => {
+          setImageError(null)
+          dialogs.close()
+        }}
       />
 
       <WordCountDialog
