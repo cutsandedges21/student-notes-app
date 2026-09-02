@@ -21,8 +21,23 @@ describe('base64 round trip', () => {
     const bytes = new Uint8Array(400_000)
     for (let i = 0; i < bytes.length; i += 1) bytes[i] = i % 256
 
-    expect(() => toBase64(bytes)).not.toThrow()
-    expect(fromBase64(toBase64(bytes))).toEqual(bytes)
+    let encoded = ''
+    expect(() => {
+      encoded = toBase64(bytes)
+    }).not.toThrow()
+
+    const restored = fromBase64(encoded)
+
+    /*
+     * Compared by hand rather than with `toEqual`. Vitest's deep equality walks
+     * 400,000 elements building a diff it will almost certainly never print,
+     * which took over 15 seconds under a full parallel run and timed the test
+     * out -- while the encoding it is meant to be testing takes milliseconds.
+     * The size is the point of the test, so the assertion changed instead.
+     */
+    expect(restored.length).toBe(bytes.length)
+    const firstMismatch = bytes.findIndex((byte, index) => restored[index] !== byte)
+    expect(firstMismatch).toBe(-1)
   })
 
   it('round-trips a real Yjs update unchanged', () => {
