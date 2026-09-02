@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AiSidebar, type AiSelection } from './AiSidebar'
+import { AiSidebar } from './AiSidebar'
+import { AiConversationProvider, type AiSelection } from './AiConversation'
 import type { AiResponse } from '../types/ai'
 
 const improve = vi.fn()
@@ -31,10 +32,17 @@ vi.mock('../services/aiClient', () => ({
 
 const selection: AiSelection = { text: 'mitochondria make ATP', from: 1, to: 22 }
 
-function renderSidebar(props: Partial<React.ComponentProps<typeof AiSidebar>> = {}) {
+/*
+ * The conversation lives in the provider now, and the panel is a view onto it,
+ * so these render together. What is being exercised is unchanged: what the
+ * panel shows, and what it hands the document when a suggestion is applied.
+ */
+type ConversationProps = React.ComponentProps<typeof AiConversationProvider>
+
+function renderSidebar(props: Partial<ConversationProps> = {}) {
   const onPendingHandled = vi.fn()
   const view = render(
-    <AiSidebar
+    <AiConversationProvider
       documentId="doc-1"
       classId="class-1"
       selection={null}
@@ -43,7 +51,9 @@ function renderSidebar(props: Partial<React.ComponentProps<typeof AiSidebar>> = 
       onApply={vi.fn()}
       onPreview={vi.fn()}
       {...props}
-    />,
+    >
+      <AiSidebar />
+    </AiConversationProvider>,
   )
   return { ...view, onPendingHandled }
 }
@@ -89,17 +99,33 @@ describe('AiSidebar', () => {
     })
   })
 
-  // Both copies of the panel (docked and drawer) are mounted at every width,
-  // so without the `active` gate one pending action became two API calls.
-  it('ignores a pending action while it is the off-screen copy', async () => {
-    const { onPendingHandled } = renderSidebar({
-      active: false,
-      pendingMode: { mode: 'IMPROVE_NOTES', selection },
-    })
+  /*
+   * One pending action is one request.
+   *
+   * Two copies of the panel are mounted at every width, and each used to run
+   * the pending-action effect -- so a single shortcut fired twice unless
+   * exactly one copy was flagged as the real one. The conversation is shared
+   * now and the effect runs in the provider, so the duplication is gone by
+   * construction rather than by flag. Two panels, one call.
+   */
+  it('sends one request even with the panel rendered twice', async () => {
+    render(
+      <AiConversationProvider
+        documentId="doc-1"
+        classId="class-1"
+        selection={null}
+        pendingMode={{ mode: 'IMPROVE_NOTES', selection }}
+        onPendingHandled={vi.fn()}
+        onApply={vi.fn()}
+        onPreview={vi.fn()}
+      >
+        <AiSidebar />
+        <AiSidebar />
+      </AiConversationProvider>,
+    )
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(improve).not.toHaveBeenCalled()
-    expect(onPendingHandled).not.toHaveBeenCalled()
+    await screen.findAllByText('Here is a tidier version.')
+    expect(improve).toHaveBeenCalledTimes(1)
   })
 
   /*
@@ -129,7 +155,7 @@ describe('AiSidebar', () => {
     // The prop is a union of sync and async returns, which a bare vi.fn() does
     // not satisfy. Asserted at the boundary rather than typing every mock:
     // what these tests care about is the arguments and the returned verdict.
-    type ApplyProp = React.ComponentProps<typeof AiSidebar>['onApply']
+    type ApplyProp = ConversationProps['onApply']
 
     const runCheck = async (onApply: ReturnType<typeof vi.fn>) => {
       improve.mockResolvedValue(flagged)

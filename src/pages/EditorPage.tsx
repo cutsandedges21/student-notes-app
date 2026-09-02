@@ -18,8 +18,17 @@ import { DocsTitleBar } from '../editor/DocsTitleBar'
 import { SelectionToolbar } from '../editor/SelectionToolbar'
 import { AiBubble } from '../editor/AiBubble'
 import { printNote } from '../editor/printDocument'
-import { US_LETTER, type PageGeometry } from '../editor/pagination/geometry'
-import { AiSidebar, type AiSelection } from '../ai/AiSidebar'
+import {
+  DEFAULT_PAGE_SETUP,
+  US_LETTER,
+  parsePageSetup,
+  type PageGeometry,
+  type PageSetup,
+} from '../editor/pagination/geometry'
+import { PageSetupDialog } from '../editor/PageSetupDialog'
+import { AiSidebar } from '../ai/AiSidebar'
+import { AiConversationProvider, type AiSelection } from '../ai/AiConversation'
+import { AiDock } from '../ai/AiDock'
 import { CommentsSidebar } from '../comments/CommentsSidebar'
 import { useComments } from '../comments/useComments'
 import { VersionHistoryPanel } from '../history/VersionHistoryPanel'
@@ -50,7 +59,6 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { AiDrawer } from '../components/AiDrawer'
 import { useAuth } from '../contexts/AuthContext'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
-import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useMinimumVisible } from '../hooks/useMinimumVisible'
 import { useFlushOnUnload } from '../hooks/useFlushOnUnload'
 import { createAutosaveScheduler } from '../lib/autosave'
@@ -86,8 +94,6 @@ export default function EditorPage() {
   const { classSlug, noteRef } = useParams<{ classSlug: string; noteRef: string }>()
   const { user, profile, loading: authLoading } = useAuth()
   const online = useOnlineStatus()
-  // Matches the `lg:` breakpoint the panel's own visibility classes use.
-  const panelDocked = useMediaQuery('(min-width: 1024px)')
 
   // null while signed out -- services then read and write browser storage.
   const userId = user?.id ?? null
@@ -137,6 +143,31 @@ export default function EditorPage() {
    * chosen.
    */
   const [panelTab, setPanelTab] = useState('assistant')
+  /*
+   * Where the assistant lives: the bar under the page, or the column beside
+   * it. Remembered across notes and sessions, because it is a preference about
+   * how someone works rather than a decision about one document.
+   */
+  const [aiPlacement, setAiPlacement] = useState<'dock' | 'panel'>(() => {
+    try {
+      return localStorage.getItem('margin:ai-placement') === 'panel' ? 'panel' : 'dock'
+    } catch {
+      return 'dock'
+    }
+  })
+
+  const moveAi = useCallback((next: 'dock' | 'panel') => {
+    setAiPlacement(next)
+    try {
+      localStorage.setItem('margin:ai-placement', next)
+    } catch {
+      // A refused write costs the preference next session, nothing more.
+    }
+    if (next === 'panel') {
+      setPanelTab('assistant')
+      setSidebarOpen(true)
+    }
+  }, [])
   const [editor, setEditor] = useState<Editor | null>(null)
   /*
    * Link, image, find and word count. Both the menubar and the formatting
@@ -223,6 +254,27 @@ export default function EditorPage() {
    * was actually pressed keeps the blast radius the size of the feature.
    */
   const starTouchedRef = useRef(false)
+  /*
+   * Paper, orientation and margins.
+   *
+   * Owned here rather than in the editor because the ruler and the page-setup
+   * dialog set the same two margins: two copies would mean the note showed
+   * whichever was touched last and persisted the other.
+   *
+   * Sent only once it has been changed, the same hedge as `starred` and for
+   * the same reason -- `documents.page_setup` is a new column, and a database
+   * that has not run the migration rejects a write naming it.
+   */
+  const pageSetupRef = useRef<PageSetup>(DEFAULT_PAGE_SETUP)
+  const pageSetupTouchedRef = useRef(false)
+  const [pageSetup, setPageSetup] = useState<PageSetup>(DEFAULT_PAGE_SETUP)
+
+  const changePageSetup = (next: PageSetup) => {
+    pageSetupRef.current = next
+    pageSetupTouchedRef.current = true
+    setPageSetup(next)
+    scheduleCurrent()
+  }
   const classIdRef = useRef<string | null>(null)
   const classSlugRef = useRef<string | undefined>(classSlug)
   const slugRef = useRef<string | undefined>(undefined)
@@ -290,6 +342,7 @@ export default function EditorPage() {
           footer: footerRef.current ?? undefined,
           pageNumbers: pageNumbersRef.current,
           ...(starTouchedRef.current ? { starred: starredRef.current } : {}),
+          ...(pageSetupTouchedRef.current ? { pageSetup: pageSetupRef.current } : {}),
         })
 
         if (result.status === 'stale') {
@@ -471,6 +524,12 @@ export default function EditorPage() {
         starredRef.current = storedStar
         starTouchedRef.current = false
         setStarred(storedStar)
+        // Validated on the way out: a row written by a newer client, or edited
+        // by hand, opens with the default rather than failing to open.
+        const storedSetup = parsePageSetup(docRow?.page_setup)
+        pageSetupRef.current = storedSetup
+        pageSetupTouchedRef.current = false
+        setPageSetup(storedSetup)
         classIdRef.current = classRow?.id ?? docRow?.class_id ?? null
         classSlugRef.current = classRow?.slug ?? classSlug
         slugRef.current = docRow?.slug
@@ -1039,6 +1098,23 @@ export default function EditorPage() {
   }
 
   return (
+    <AiConversationProvider
+      documentId={doc.id}
+      classId={doc.class_id}
+      selection={selection}
+      onApply={handleApplySuggestion}
+      onPreview={handlePreviewSuggestion}
+      pendingMode={pendingMode}
+      onPendingHandled={() => setPendingMode(null)}
+      // A shortcut or a toolbar action has to land somewhere visible, so
+      // whichever surface is in use opens itself.
+      onActivity={() => {
+        if (aiPlacement === 'panel') {
+          setPanelTab('assistant')
+          setSidebarOpen(true)
+        }
+      }}
+    >
     <div className="doc-shell flex h-full flex-col">
       {!compact && (
         <header className="shrink-0 bg-surface">
@@ -1100,6 +1176,7 @@ export default function EditorPage() {
                 onFind={dialogs.toggleFind}
                 onShowWordCount={dialogs.openWordCount}
                 onEquation={dialogs.openEquation}
+                onPageSetup={dialogs.openPageSetup}
                 onPrint={handlePrint}
                 // Same document; the browser's dialog offers Save as PDF as a
                 // destination, which is what writes the file.
@@ -1142,6 +1219,10 @@ export default function EditorPage() {
           onFind={dialogs.toggleFind}
           onEquation={dialogs.openEquation}
           onImageFiles={userId ? (files) => void uploadImages(files) : undefined}
+          pageSetup={pageSetup}
+          onMarginsChange={({ left, right }) =>
+            changePageSetup({ ...pageSetup, margins: { ...pageSetup.margins, left, right } })
+          }
           onSelectionChange={handleSelectionChange}
           showRuler={showRuler}
           compact={compact}
@@ -1169,22 +1250,15 @@ export default function EditorPage() {
           sidebar={
             <SidePanel
               tabs={[
-                {
-                  id: 'assistant',
-                  label: 'Assistant',
-                  content: (
-                    <AiSidebar
-                      documentId={doc.id}
-                      classId={doc.class_id}
-                      selection={selection}
-                      pendingMode={pendingMode}
-                      onPendingHandled={() => setPendingMode(null)}
-                      onApply={handleApplySuggestion}
-                      onPreview={handlePreviewSuggestion}
-                      active={panelDocked && panelTab === 'assistant'}
-                    />
-                  ),
-                },
+                ...(aiPlacement === 'panel'
+                  ? [
+                      {
+                        id: 'assistant',
+                        label: 'Assistant',
+                        content: <AiSidebar onMoveToDock={() => moveAi('dock')} />,
+                      },
+                    ]
+                  : []),
                 {
                   id: 'comments',
                   label: 'Comments',
@@ -1211,24 +1285,15 @@ export default function EditorPage() {
       >
         <SidePanel
           tabs={[
-            {
-              id: 'assistant',
-              label: 'Assistant',
-              content: (
-                <AiSidebar
-                  documentId={doc.id}
-                  classId={doc.class_id}
-                  selection={selection}
-                  pendingMode={pendingMode}
-                  onPendingHandled={() => setPendingMode(null)}
-                  onApply={handleApplySuggestion}
-                  onPreview={handlePreviewSuggestion}
-                  // Only the visible copy may act on a pending action, or one
-                  // request becomes two.
-                  active={!panelDocked && panelTab === 'assistant'}
-                />
-              ),
-            },
+            ...(aiPlacement === 'panel'
+              ? [
+                  {
+                    id: 'assistant',
+                    label: 'Assistant',
+                    content: <AiSidebar onMoveToDock={() => moveAi('dock')} />,
+                  },
+                ]
+              : []),
             {
               id: 'comments',
               label: 'Comments',
@@ -1337,14 +1402,30 @@ export default function EditorPage() {
         onClose={dialogs.close}
       />
 
+      <PageSetupDialog
+        open={dialogs.open === 'pageSetup'}
+        setup={pageSetup}
+        onApply={(next) => {
+          changePageSetup(next)
+          dialogs.close()
+        }}
+        onClose={dialogs.close}
+      />
+
       <FindReplacePanel
         editor={editor}
         open={dialogs.open === 'find'}
         onClose={dialogs.close}
       />
 
-      {fullScreen && (
-        <AiBubble open={sidebarOpen} onClick={() => setSidebarOpen((open) => !open)} />
+      {aiPlacement === 'dock' ? (
+        <AiDock onMoveToPanel={() => moveAi('panel')} />
+      ) : (
+        // The bubble is the way back to a panel that has been closed, and only
+        // matters in full screen, where there is no other chrome to reopen it.
+        fullScreen && (
+          <AiBubble open={sidebarOpen} onClick={() => setSidebarOpen((open) => !open)} />
+        )
       )}
 
       <SelectionToolbar
@@ -1357,5 +1438,6 @@ export default function EditorPage() {
         onComment={startComment}
       />
     </div>
+    </AiConversationProvider>
   )
 }
