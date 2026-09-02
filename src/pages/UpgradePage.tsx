@@ -6,28 +6,30 @@ import { cn } from '../lib/cn'
 /**
  * Pricing.
  *
- * The free document cap is not a round number picked for looks -- see
- * FREE_DOCUMENT_LIMIT below for how it falls out of the storage budget.
+ * Everything listed under "Today" is checked against the code. Everything under
+ * "Planned" is labelled as planned and claims nothing.
+ *
+ * This page used to advertise a $6 tier whose five features were, on audit:
+ * version history with restore (the snapshots existed, nothing could read
+ * them), priority AI with longer context (no tiering of any kind), export to
+ * PDF and Word (PDF is the browser's own Save as PDF; Word was never written),
+ * offline editing on mobile (no service worker, no manifest, no local
+ * persistence beyond guest notes), and unlimited notes as a contrast to a
+ * 50-note free cap that `FREE_DOCUMENT_LIMIT` described and nothing enforced.
+ *
+ * The cap constant is gone rather than made honest. A limit named in the
+ * frontend is not a limit -- it would have to be enforced by Postgres to mean
+ * anything, and enforcing it would mean building a paywall around a product
+ * that takes no payment. Removing the claim is the smaller, truer change.
+ *
+ * The storage arithmetic that produced 50 is worth keeping, because it is the
+ * reason a cap will eventually be needed. A lecture note costs about 6 KB
+ * stored: ~3.5 KB of Tiptap JSON, ~1.8 KB of denormalised plain text (both
+ * TOAST-compressed), ~0.7 KB of row and index overhead. Across 10,000 users,
+ * reserving 30% for indexes and bloat: Supabase's 500 MB free tier allows
+ * about 6 notes each, and the 8 GB Pro tier about 98. So a free plan worth
+ * offering needs Pro underneath it, and 50 notes each costs 2.9 GB of it.
  */
-
-/**
- * Where 50 comes from.
- *
- * A typical lecture note costs about 6 KB stored: ~3.5 KB of Tiptap JSON and
- * ~1.8 KB of denormalised plain text (both TOAST-compressed by Postgres), plus
- * ~0.7 KB of row and index overhead.
- *
- * Assuming 10,000 users and reserving 30% of the database for indexes, auth
- * tables and bloat:
- *
- *   Supabase Free, 500 MB -> 350 MB usable -> 36 KB/user ->  ~6 notes each
- *   Supabase Pro,    8 GB -> 5.7 GB usable -> 587 KB/user -> ~98 notes each
- *
- * So the 500 MB free tier cannot support a credible free plan at that scale --
- * six notes is less than one course. On Pro, a 50-note cap costs 300 KB/user,
- * or 2.9 GB across 10,000 users, which leaves real headroom.
- */
-export const FREE_DOCUMENT_LIMIT = 50
 
 interface Tier {
   name: string
@@ -42,34 +44,35 @@ interface Tier {
 
 const TIERS: Tier[] = [
   {
-    name: 'Free',
+    name: 'Today',
     price: '$0',
-    blurb: 'Everything you need for a single term.',
+    blurb: 'Everything Margin does right now, for everyone.',
     features: [
-      `Up to ${FREE_DOCUMENT_LIMIT} notes`,
-      'Unlimited classes',
-      'Full editor: formatting, lists, images, links',
+      'Unlimited notes and classes',
+      'Full editor: formatting, lists, tables, images, equations, links',
+      'Real-time collaboration, with live cursors',
+      'Comments and replies, anchored to the passage',
+      'Share links, view or edit, revocable',
       'AI assistant: improve, check, explain, exam-ready',
-      'Share links, view or edit',
+      'Print, and save as PDF through your browser',
     ],
-    cta: 'Your current plan',
-    ctaTo: '/classes',
-  },
-  {
-    name: 'Unlimited',
-    price: '$6',
-    cadence: '/month',
-    blurb: 'For students who keep everything, every term.',
-    features: [
-      'Unlimited notes',
-      'Version history with restore',
-      'Priority AI, with longer class context',
-      'Export to PDF and Word',
-      'Offline editing on mobile',
-    ],
-    cta: 'Upgrade',
+    cta: 'Open my notes',
     ctaTo: '/classes',
     featured: true,
+  },
+  {
+    name: 'Planned',
+    price: '—',
+    blurb: 'Being built. Not available yet, and not charged for.',
+    features: [
+      'Version history you can browse and restore',
+      'Export to Word and Markdown',
+      'Offline editing on mobile',
+      'Import from .docx and .md',
+      'Search across every note you have',
+    ],
+    cta: 'Open my notes',
+    ctaTo: '/classes',
   },
 ]
 
@@ -87,10 +90,10 @@ export default function UpgradePage() {
 
       <main className="mx-auto max-w-4xl px-6 py-14">
         <div className="text-center">
-          <h1 className="text-3xl font-medium text-ink">Keep every note</h1>
+          <h1 className="text-3xl font-medium text-ink">What Margin does</h1>
           <p className="mx-auto mt-3 max-w-lg text-sm text-ink-muted">
-            Margin is free for a term&rsquo;s worth of notes. Upgrade when you want to
-            keep them all, across every course you take.
+            Margin is free, and everything it can do is on the left. What is still
+            being built is on the right, so you can tell the two apart.
           </p>
         </div>
 
@@ -147,7 +150,7 @@ export default function UpgradePage() {
 
         {/* Said plainly rather than buried: this is a demo, not a storefront. */}
         <p className="mt-10 text-center text-xs text-ink-faint">
-          Prices are illustrative. No payment is taken and no card is collected.
+          Margin has no paid plan. No payment is taken and no card is collected.
         </p>
       </main>
     </div>
