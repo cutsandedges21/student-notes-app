@@ -1,3 +1,13 @@
+/*
+ * KaTeX's own stylesheet, imported rather than restated. It carries the maths
+ * fonts and the spacing rules that make a rendered formula legible, and it has
+ * to be a real stylesheet in the document rather than scoped styles: printing
+ * copies `<style>` and `<link rel=stylesheet>` nodes into the print frame
+ * (`editor/printDocument.ts`), so anything not in one of those two prints
+ * unstyled -- a formula would come out of the printer as run-together text.
+ */
+@import 'katex/dist/katex.min.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

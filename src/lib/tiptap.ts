@@ -28,6 +28,16 @@ export function extractPlainText(node: JSONContent): string {
   // newline instead.
   if (node.type === 'hardBreak') return '\n'
 
+  // Equations are atoms: the formula lives in `attrs.latex` and there is no
+  // text content underneath, so the generic walk below returns nothing and the
+  // equation disappears from `content_text` entirely. The AI reads that field,
+  // which means a note whose whole point is a derivation would reach the model
+  // as a paragraph of prose wrapped around a hole. The LaTeX source is the only
+  // textual form the equation has, so it is what gets written.
+  if (node.type === 'inlineMath' || node.type === 'blockMath') {
+    return typeof node.attrs?.latex === 'string' ? node.attrs.latex : ''
+  }
+
   // A row's cells are block nodes, so the generic rule below would give each
   // its own line -- and the row grouping, which is the entire meaning of a
   // table, would be gone by the time the AI reads the note back. Pipes keep it,

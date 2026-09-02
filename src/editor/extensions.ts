@@ -6,6 +6,9 @@ import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
+import Superscript from '@tiptap/extension-superscript'
+import Subscript from '@tiptap/extension-subscript'
+import { InlineMath, BlockMath } from '@tiptap/extension-mathematics'
 import {
   TextStyle,
   Color,
@@ -48,6 +51,25 @@ import { SearchHighlight } from './searchHighlight'
  * Resizing is on. The pagination engine treats a table as a container and
  * breaks it between rows, so a table taller than a page continues onto the
  * next one instead of overflowing the sheet.
+ *
+ * Superscript, Subscript and the two math nodes are schema for the same
+ * reason again -- x², H₂O and a quoted formula are ordinary things to find in
+ * a student's notes, and an editor that does not know the node drops it on
+ * parse. Registering them here is what stops opening a note in the read-only
+ * shared view from deleting the chemistry out of it.
+ *
+ * Math stores LaTeX in the node's `latex` attribute and renders it through
+ * KaTeX at view time. The source is the document; the rendering is not. That
+ * is deliberate -- storing rendered HTML would put presentation in the
+ * document, make the formula uneditable, and hand the AI a blob it cannot
+ * reason about.
+ *
+ * `throwOnError: false` is the important half of the configuration. Someone
+ * typing a formula passes through a dozen invalid states before reaching a
+ * valid one -- `\frac{` is invalid until the closing brace arrives. KaTeX's
+ * default is to throw, which in a node view means the editor crashes while
+ * the student is mid-word. With it off, KaTeX renders the malformed source in
+ * red and the writer can see what they are fixing.
  */
 export const editorExtensions = [
   StarterKit.configure({
@@ -65,6 +87,10 @@ export const editorExtensions = [
   LineSpacing,
   Indent,
   PageBreak,
+  Superscript,
+  Subscript,
+  InlineMath.configure({ katexOptions: { throwOnError: false } }),
+  BlockMath.configure({ katexOptions: { throwOnError: false } }),
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Image.configure({ inline: false, HTMLAttributes: { class: 'doc-image' } }),
