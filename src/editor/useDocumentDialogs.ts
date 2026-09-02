@@ -17,7 +17,13 @@ import { countText, type Counts } from './wordCount'
  * the lowest point in the tree that can serve them both.
  */
 
-export type DialogName = 'link' | 'image' | 'find' | 'wordCount' | 'equation'
+export type DialogName =
+  | 'link'
+  | 'image'
+  | 'find'
+  | 'wordCount'
+  | 'equation'
+  | 'pageSetup'
 
 /** The equation under the caret, when there is one. */
 export interface EquationTarget {
@@ -55,6 +61,7 @@ export interface DocumentDialogs {
   /** Find is a toggle: the same control closes the panel it opened. */
   toggleFind: () => void
   openWordCount: () => void
+  openPageSetup: () => void
   /** Opens on the selected equation when there is one, empty otherwise. */
   openEquation: () => void
   /** Non-null while the equation dialog is editing rather than inserting. */
@@ -90,6 +97,7 @@ export function useDocumentDialogs(editor: Editor | null): DocumentDialogs {
   }, [editor])
 
   const openImage = useCallback(() => setOpen('image'), [])
+  const openPageSetup = useCallback(() => setOpen('pageSetup'), [])
 
   const toggleFind = useCallback(
     () => setOpen((current) => (current === 'find' ? null : 'find')),
@@ -184,6 +192,7 @@ export function useDocumentDialogs(editor: Editor | null): DocumentDialogs {
     openImage,
     toggleFind,
     openWordCount,
+    openPageSetup,
     openEquation,
     equationTarget,
     submitEquation,

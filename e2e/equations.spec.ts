@@ -35,7 +35,7 @@ test.describe('equations', () => {
     await equationField(page).fill('E = \\frac{1}{2}mv^2')
 
     // The result, rendered by KaTeX inside the dialog.
-    await expect(dialog.locator('.katex')).toBeVisible()
+    await expect(dialog.locator('[data-testid="equation-preview"] .katex')).toBeVisible()
     await expect(dialog.getByRole('button', { name: 'Insert' })).toBeEnabled()
 
     await dialog.getByRole('button', { name: 'Insert' }).click()
@@ -50,12 +50,12 @@ test.describe('equations', () => {
 
     await equationField(page).fill('\\frac{')
 
-    await expect(dialog.locator('.katex')).toHaveCount(0)
+    await expect(dialog.locator('[data-testid="equation-preview"] .katex')).toHaveCount(0)
     await expect(dialog.getByRole('button', { name: 'Insert' })).toBeDisabled()
 
     await equationField(page).fill('\\frac{a}{b}')
 
-    await expect(dialog.locator('.katex')).toBeVisible()
+    await expect(dialog.locator('[data-testid="equation-preview"] .katex')).toBeVisible()
     await expect(dialog.getByRole('button', { name: 'Insert' })).toBeEnabled()
   })
 

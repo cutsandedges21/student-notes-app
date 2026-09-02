@@ -45,6 +45,106 @@ export const PAPER_SIZES = { letter: US_LETTER, legal: US_LEGAL, a4: A4 } as con
 
 export type PaperSizeName = keyof typeof PAPER_SIZES
 
+export const PAPER_LABELS: Record<PaperSizeName, string> = {
+  letter: 'Letter (8.5 × 11 in)',
+  a4: 'A4 (210 × 297 mm)',
+  legal: 'Legal (8.5 × 14 in)',
+}
+
+export interface PageMargins {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+/**
+ * A document's page setup, as chosen rather than as measured.
+ *
+ * Stored on the note and kept apart from `PageGeometry`, which is what the
+ * pagination engine consumes. The distinction earns its keep: the setup is
+ * three orthogonal choices a person makes, while the geometry is the six
+ * numbers those choices produce, and collapsing them would mean storing
+ * `pageWidth: 1123` and having to work backwards to answer "is this A4
+ * landscape?" when the dialog reopens.
+ */
+export interface PageSetup {
+  paper: PaperSizeName
+  landscape: boolean
+  margins: PageMargins
+}
+
+export const DEFAULT_PAGE_SETUP: PageSetup = {
+  paper: 'letter',
+  landscape: false,
+  margins: { top: INCH, right: INCH, bottom: INCH, left: INCH },
+}
+
+/** Smallest margin the ruler and the dialog will accept, in pixels. */
+export const MIN_MARGIN = 0
+
+/**
+ * Builds the geometry the pagination engine works in.
+ *
+ * Landscape swaps the paper's own dimensions and leaves the margins alone:
+ * turning the page does not turn the margins with it. A left margin is the
+ * binding edge whichever way up the sheet is, which is what every word
+ * processor does and what a reader expects of a printed handout.
+ */
+export function geometryFor(setup: PageSetup): PageGeometry {
+  const paper = PAPER_SIZES[setup.paper] ?? US_LETTER
+  const width = setup.landscape ? paper.pageHeight : paper.pageWidth
+  const height = setup.landscape ? paper.pageWidth : paper.pageHeight
+
+  return {
+    pageWidth: width,
+    pageHeight: height,
+    marginTop: setup.margins.top,
+    marginRight: setup.margins.right,
+    marginBottom: setup.margins.bottom,
+    marginLeft: setup.margins.left,
+    pageGap: DEFAULT_PAGE_GAP,
+  }
+}
+
+/**
+ * Reads a stored page setup, falling back rather than throwing.
+ *
+ * The column is jsonb and nullable, so this sees rows written before it
+ * existed, rows written by a newer client, and rows edited by hand. A note
+ * that will not open because its page setup is unrecognised would be a
+ * spectacularly bad trade for a paper size, so anything unusable becomes the
+ * default and the note opens.
+ */
+export function parsePageSetup(value: unknown): PageSetup {
+  if (typeof value !== 'object' || value === null) return DEFAULT_PAGE_SETUP
+
+  const raw = value as Record<string, unknown>
+  const paper =
+    typeof raw.paper === 'string' && raw.paper in PAPER_SIZES
+      ? (raw.paper as PaperSizeName)
+      : DEFAULT_PAGE_SETUP.paper
+
+  const margins = raw.margins as Record<string, unknown> | undefined
+  const side = (name: keyof PageMargins): number => {
+    const candidate = margins?.[name]
+    return typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= MIN_MARGIN
+      ? candidate
+      : DEFAULT_PAGE_SETUP.margins[name]
+  }
+
+  const setup: PageSetup = {
+    paper,
+    landscape: raw.landscape === true,
+    margins: { top: side('top'), right: side('right'), bottom: side('bottom'), left: side('left') },
+  }
+
+  // Margins that leave no room for text would render a note as a stack of
+  // blank sheets with the writing nowhere. Refuse the whole stored setup
+  // rather than half of it, so what opens is at least coherent.
+  return isUsable(geometryFor(setup)) ? setup : DEFAULT_PAGE_SETUP
+}
+
 /**
  * Height available to text on one page. For US Letter with 1in margins this is
  * 1056 - 96 - 96 = 864px -- the limit a page breach is measured against.

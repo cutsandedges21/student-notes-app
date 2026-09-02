@@ -349,6 +349,7 @@ export function guestCreateDocument(classId: string, title = ''): DocumentRow {
     header: { type: 'doc', content: [] },
     footer: { type: 'doc', content: [] },
     page_numbers: 'off',
+    page_setup: null,
     starred: false,
     version: 1,
     created_at: timestamp,
@@ -377,6 +378,7 @@ export function guestSaveDocument(params: {
   footer?: JSONContent
   pageNumbers?: string
   starred?: boolean
+  pageSetup?: unknown
   /** See documents.saveDocument: off on the autosave path, by design. */
   reslug?: boolean
 }): SaveResult {
@@ -389,6 +391,7 @@ export function guestSaveDocument(params: {
     footer,
     pageNumbers,
     starred,
+    pageSetup,
     reslug,
   } = params
   const documents = read<DocumentRow>(DOCUMENTS_KEY)
@@ -426,6 +429,7 @@ export function guestSaveDocument(params: {
     ...(header ? { header } : {}),
     ...(footer ? { footer } : {}),
     ...(pageNumbers ? { page_numbers: pageNumbers } : {}),
+    ...(pageSetup === undefined ? {} : { page_setup: pageSetup }),
     ...(starred === undefined ? {} : { starred }),
     version,
     updated_at: now(),

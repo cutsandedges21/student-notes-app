@@ -143,6 +143,7 @@ export async function createDocument(
       header: EMPTY_DOC,
       footer: EMPTY_DOC,
       page_numbers: 'off',
+      page_setup: null,
     })
     .select()
     .single()
@@ -192,6 +193,14 @@ export async function saveDocument(
      * starring working against both schemas.
      */
     starred?: boolean
+    /**
+     * Same hedge as `starred`, and for the same reason: `documents.page_setup`
+     * arrived after this app shipped, and a project that has not run the
+     * migration rejects a write naming it. Omitting it unless a caller has
+     * actually changed the page setup keeps every other save working against
+     * both schemas.
+     */
+    pageSetup?: unknown
   },
 ): Promise<SaveResult> {
   if (!userId) return guestSaveDocument(params)
@@ -206,6 +215,7 @@ export async function saveDocument(
     footer,
     pageNumbers,
     starred,
+    pageSetup,
     reslug,
   } = params
 
@@ -232,6 +242,7 @@ export async function saveDocument(
       ...(header ? { header } : {}),
       ...(footer ? { footer } : {}),
       ...(pageNumbers ? { page_numbers: pageNumbers } : {}),
+      ...(pageSetup === undefined ? {} : { page_setup: pageSetup }),
       ...(starred === undefined ? {} : { starred }),
       version: expectedVersion + 1,
     })

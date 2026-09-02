@@ -95,6 +95,7 @@ describe('migrateGuestData', () => {
       footer,
       pageNumbers: 'right',
       starred: true,
+      pageSetup: { paper: 'a4', landscape: true, margins: { top: 48, right: 48, bottom: 48, left: 48 } },
     })
     expect(saved.status).toBe('saved')
 
@@ -111,6 +112,9 @@ describe('migrateGuestData', () => {
       footer,
       pageNumbers: 'right',
       starred: true,
+      // Carried opaquely: the destination validates it when the note opens,
+      // and a paper size chosen as a guest should survive signing in.
+      pageSetup: { paper: 'a4', landscape: true, margins: { top: 48, right: 48, bottom: 48, left: 48 } },
     })
 
     // The class carries its own metadata, not just its name.
@@ -134,7 +138,10 @@ describe('migrateGuestData', () => {
 
     // page_numbers/starred are camelCased at the service boundary; compare on
     // the set of concepts rather than on the destination's spelling.
-    const rename: Record<string, string> = { page_numbers: 'pageNumbers' }
+    const rename: Record<string, string> = {
+      page_numbers: 'pageNumbers',
+      page_setup: 'pageSetup',
+    }
     const expected = planned.map((field) => rename[field] ?? field).sort()
 
     expect(Object.keys(toMigrationDocument(doc)).sort()).toEqual(expected)

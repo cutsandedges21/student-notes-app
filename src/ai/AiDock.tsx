@@ -164,7 +164,7 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
         it would be a card floating over the page with nothing holding it there.
       */}
       {open && (lastAnswer || error) && (
-        <div className="pointer-events-auto max-h-56 w-[min(90vw,640px)] overflow-y-auto rounded-2xl border border-line bg-surface p-4 shadow-sheet">
+        <div className="motion-rise pointer-events-auto max-h-56 w-[min(90vw,640px)] overflow-y-auto rounded-2xl border border-line bg-surface p-4 shadow-sheet">
           {error ? (
             <p className="text-sm text-danger">{error}</p>
           ) : (
@@ -189,9 +189,11 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
         <form
           onSubmit={submit}
           className={cn(
-            'pointer-events-auto flex w-[min(90vw,640px)] items-center gap-2 rounded-full',
-            'border border-accent/40 bg-surface py-2 pl-3 pr-2 shadow-pill',
-            'ring-4 ring-accent/10',
+            'ai-dock-bar motion-pop pointer-events-auto flex w-[min(90vw,640px)] items-center gap-2',
+            // No focus ring: this is a bar the writer is meant to talk into,
+            // and outlining it on click made it read as a form field with a
+            // validation state.
+            'rounded-full border border-line bg-surface py-2 pl-3 pr-2 shadow-sheet',
           )}
         >
           <button
@@ -202,11 +204,12 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
           >
             <Plus size={18} />
           </button>
+          {/* Present because the bar is shaped around it, but deliberately
+              inert until there is something for it to open. */}
           <button
             type="button"
             title="Suggestions"
             aria-label="Suggestions"
-            onClick={onMoveToPanel}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-docs-icon transition-colors hover:bg-docs-chrome-hover"
           >
             <SlidersHorizontal size={17} />
@@ -221,7 +224,7 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
             placeholder={
               revising ? 'What should I change?' : 'Describe any changes that you want to make…'
             }
-            className="min-w-0 flex-1 bg-transparent px-1 text-sm text-ink outline-none placeholder:text-ink-faint"
+            className="ai-dock-field min-w-0 flex-1 bg-transparent px-1 text-sm text-ink outline-none placeholder:text-ink-faint"
           />
 
           <button
@@ -231,7 +234,7 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
             aria-label="Switch to side panel"
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-docs-icon transition-colors hover:bg-docs-chrome-hover"
           >
-            <PanelRight size={17} />
+            <PanelRight size={17} className="rotate-180" />
           </button>
           <button
             type="submit"
@@ -256,11 +259,12 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
           aria-label="AI assistant"
           aria-expanded={false}
           className={cn(
-            'pointer-events-auto grid h-8 w-28 place-items-center rounded-full',
-            'bg-accent-subtle text-accent transition-colors hover:bg-docs-active',
+            'motion-pop motion-press pointer-events-auto grid h-9 w-28 place-items-center',
+            'rounded-full bg-accent-subtle shadow-pill transition-[background-color,box-shadow,transform]',
+            'hover:bg-docs-active hover:shadow-sheet',
           )}
         >
-          <SparkIcon size={16} />
+          <SparkIcon size={18} />
         </button>
       )}
     </div>,

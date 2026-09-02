@@ -42,6 +42,16 @@ export interface DocumentRow {
   /** Where the page number sits in the footer: off | left | center | right. */
   page_numbers: string
   /**
+   * Paper size, orientation and margins.
+   *
+   * `{ paper, landscape, margins: { top, right, bottom, left } }`, validated on
+   * the way out by `parsePageSetup`. Null means never chosen, which reads back
+   * as the application default -- so the default lives in one place rather
+   * than being duplicated into a column default that would need migrating
+   * every time it changed.
+   */
+  page_setup: unknown
+  /**
    * Starred by its owner.
    *
    * Previously a browser-local bookmark written straight to

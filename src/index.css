@@ -854,3 +854,182 @@
 .math-palette__menu .katex {
   font-size: 1em;
 }
+
+/* ==========================================================================
+ * Motion
+ *
+ * One set of curves and entrances for the whole app, so a menu, a dialog and
+ * the assistant all move the same way. Written as plain CSS rather than a
+ * Tailwind layer: several of these classes are attached at runtime, where the
+ * scanner never sees them and would purge the rules from a production build.
+ *
+ * Deliberately CSS rather than JavaScript. Transform and opacity are the two
+ * properties a browser can hand to the compositor and animate off the main
+ * thread -- so these keep running at full frame rate while React renders, the
+ * editor repaginates, or a request is in flight. The same animations driven
+ * from JavaScript would be computing styles on the very thread the editor is
+ * busy on, which is where jank comes from. JavaScript is used where it is
+ * genuinely needed instead: measuring the sheet the dock centres on, and
+ * holding surfaces open while a pointer travels.
+ * ========================================================================== */
+
+:root {
+  /* Decelerate: quick to leave, slow to settle. The everyday entrance. */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* Accelerate: for things leaving, which should not linger. */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* A little past the mark and back -- used sparingly, on press. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+}
+
+@keyframes motion-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes motion-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes motion-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.motion-pop {
+  animation: motion-pop var(--dur) var(--ease-out) both;
+}
+
+.motion-rise {
+  animation: motion-rise var(--dur-slow) var(--ease-out) both;
+}
+
+.motion-fade {
+  animation: motion-fade var(--dur) var(--ease-out) both;
+}
+
+/* Presses give a little, which is most of what makes a control feel physical. */
+.motion-press {
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+.motion-press:active {
+  transform: scale(0.95);
+}
+
+/*
+ * Site-wide defaults.
+ *
+ * Buttons and links carry a colour transition everywhere rather than only
+ * where somebody remembered to add one. Scoped to colour and shadow: putting
+ * `all` here would animate layout properties too, and a width or a height
+ * easing into place is the one thing that reliably looks broken.
+ */
+button,
+a,
+summary,
+[role='menuitem'],
+[role='tab'] {
+  transition:
+    background-color var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    opacity var(--dur) var(--ease-out);
+}
+
+/* Fields settle into focus rather than snapping. */
+input,
+textarea,
+select {
+  transition:
+    border-color var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out),
+    background-color var(--dur) var(--ease-out);
+}
+
+/* Every transient surface arrives the same way. */
+dialog[open] {
+  animation: motion-pop var(--dur) var(--ease-out) both;
+}
+
+dialog[open]::backdrop {
+  animation: motion-fade var(--dur) var(--ease-out) both;
+}
+
+[role='menu'],
+[role='listbox'],
+[role='dialog'] {
+  animation: motion-pop var(--dur) var(--ease-out) both;
+}
+
+/*
+ * Motion is decoration. Everything above is a nicety on top of an interface
+ * that already works, so a reader who has asked for less of it loses nothing
+ * by having all of it removed.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * The assistant's bar owns its focus; the field inside it does not.
+ *
+ * The base layer rings every focusable element, and a text field matches
+ * `:focus-visible` on a plain click as well as on Tab -- so clicking the bar
+ * drew a blue box inside a control that is already, visibly, the thing being
+ * typed into. This is the same exception the writing surface takes, and made
+ * the same way: the ring is removed only where something else is already
+ * saying where focus is.
+ *
+ * The replacement is on the bar rather than nothing at all. It darkens its
+ * edge and lifts when anything inside it has focus, so a keyboard user still
+ * sees where they are.
+ */
+.ai-dock-field:focus,
+.ai-dock-field:focus-visible {
+  outline: none;
+  box-shadow: none;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+}
+
+.ai-dock-bar {
+  transition:
+    border-color var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out);
+}
+
+.ai-dock-bar:focus-within {
+  border-color: #dadce0;
+  box-shadow:
+    rgba(60, 64, 67, 0.2) 0 1px 4px 0,
+    rgba(60, 64, 67, 0.12) 0 6px 14px 0;
+}

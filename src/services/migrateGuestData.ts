@@ -68,6 +68,7 @@ export const DOCUMENT_FIELD_PLAN: Record<keyof DocumentRow, FieldPlan> = {
   header: 'migrate',
   footer: 'migrate',
   page_numbers: 'migrate',
+  page_setup: 'migrate',
   starred: 'migrate',
   version: 'derive', // the copy starts its own optimistic-concurrency counter
   created_at: 'drop',
@@ -101,6 +102,8 @@ export interface MigrationDocument {
   footer: JSONContent
   pageNumbers: string
   starred: boolean
+  /** Opaque here: validated by `parsePageSetup` when the note is opened. */
+  pageSetup: unknown
 }
 
 /** Everything a destination class needs; one field per 'migrate' above. */
@@ -132,6 +135,7 @@ export function toMigrationDocument(local: DocumentRow): MigrationDocument {
     // Rows written before these columns existed read as the column defaults
     // rather than as undefined, which would blank them at the destination.
     pageNumbers: local.page_numbers ?? 'off',
+    pageSetup: local.page_setup ?? null,
     starred: local.starred ?? false,
   }
 }
@@ -185,6 +189,7 @@ export async function migrateGuestData(
         footer: input.footer,
         pageNumbers: input.pageNumbers,
         starred: input.starred,
+        pageSetup: input.pageSetup,
       })
       // A note whose body never landed is a half-migrated note. Failing here
       // keeps the local copy, which is the whole safety contract.

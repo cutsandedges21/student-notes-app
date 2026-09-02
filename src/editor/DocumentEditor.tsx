@@ -14,7 +14,12 @@ import { PaginatedSheet } from './PaginatedSheet'
 import { PageZone, zoneExtensions, type PageZoneKind } from './PageZone'
 import { generateHTML } from '@tiptap/core'
 import { PaginationController } from './pagination/controller'
-import { US_LETTER, type PageGeometry } from './pagination/geometry'
+import {
+  DEFAULT_PAGE_SETUP,
+  geometryFor,
+  type PageGeometry,
+  type PageSetup,
+} from './pagination/geometry'
 import { Pagination } from './pagination/Pagination'
 import { PAGE_BREAK_NAME } from './pagination/PageBreak'
 import type { PageNumberPosition } from './pagination/types'
@@ -24,8 +29,6 @@ import { Pencil } from 'lucide-react'
 import { AI_SIDEBAR_SIDE } from '../constants/layout'
 import { imageFilesFrom } from '../services/imageUpload'
 import { cn } from '../lib/cn'
-
-const DEFAULT_MARGIN = 96
 
 const EMPTY_ZONE: JSONContent = { type: 'doc', content: [] }
 
@@ -171,6 +174,18 @@ interface DocumentEditorProps {
   onInsertImage?: () => void
   onFind?: () => void
   onEquation?: () => void
+  /** Paper, orientation and margins for this note. */
+  pageSetup?: PageSetup
+  /**
+   * Reports a margin dragged on the ruler.
+   *
+   * The ruler and the page-setup dialog set the same two numbers, so they
+   * cannot each own a copy -- the note would then show whichever was touched
+   * last and persist the other. EditorPage owns the setup; this reports into
+   * it. It already re-renders on every drag through onGeometryChange, so
+   * lifting the state costs nothing it was not already paying.
+   */
+  onMarginsChange?: (margins: { left: number; right: number }) => void
   /**
    * Images pasted or dropped into the note.
    *
@@ -213,6 +228,8 @@ export function DocumentEditor({
   onInsertImage,
   onFind,
   onEquation,
+  pageSetup = DEFAULT_PAGE_SETUP,
+  onMarginsChange,
   onImageFiles,
   onHeaderChange,
   onFooterChange,
@@ -221,7 +238,7 @@ export function DocumentEditor({
   onEditableChange,
   collaboration,
 }: DocumentEditorProps) {
-  const [margins, setMargins] = useState({ left: DEFAULT_MARGIN, right: DEFAULT_MARGIN })
+
   const [zoom, setZoom] = useState(1)
   // Which part of the page is being edited. One at a time, as in Docs.
   const [zone, setZone] = useState<PageZoneKind | null>(null)
@@ -237,11 +254,7 @@ export function DocumentEditor({
     [],
   )
 
-  // Top and bottom margins are fixed at an inch; the ruler owns the sides.
-  const geometry = useMemo<PageGeometry>(
-    () => ({ ...US_LETTER, marginLeft: margins.left, marginRight: margins.right }),
-    [margins.left, margins.right],
-  )
+  const geometry = useMemo<PageGeometry>(() => geometryFor(pageSetup), [pageSetup])
 
   useEffect(() => {
     onGeometryChange?.(geometry)
@@ -573,9 +586,9 @@ export function DocumentEditor({
           {showRuler && editable && !fullScreen && (
             <div className="hidden bg-surface lg:block">
               <Ruler
-                leftMargin={margins.left}
-                rightMargin={margins.right}
-                onChange={setMargins}
+                leftMargin={pageSetup.margins.left}
+                rightMargin={pageSetup.margins.right}
+                onChange={onMarginsChange ?? (() => {})}
                 zoom={zoom}
               />
             </div>

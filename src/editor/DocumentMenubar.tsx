@@ -195,6 +195,7 @@ interface DocumentMenubarProps {
   onFind: () => void
   onShowWordCount: () => void
   onEquation: () => void
+  onPageSetup: () => void
   /** Where the page number sits in the footer, or `off`. */
   pageNumbers: PageNumberPosition
   onPageNumbersChange: (position: PageNumberPosition) => void
@@ -219,6 +220,7 @@ export function DocumentMenubar({
   onFind,
   onShowWordCount,
   onEquation,
+  onPageSetup,
   pageNumbers,
   onPageNumbersChange,
 }: DocumentMenubarProps) {
@@ -279,6 +281,7 @@ export function DocumentMenubar({
           onSelect: onExportPdf,
           separatorBefore: true,
         },
+        { label: 'Page setup', onSelect: onPageSetup, separatorBefore: true },
         { label: 'Print', shortcut: 'Ctrl+P', onSelect: onPrint },
         // Omitted rather than disabled for a note shared with you: the row
         // would explain a permission nobody asked about.
