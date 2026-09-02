@@ -37,16 +37,43 @@ interface PaginatedSheetProps {
    */
   renderHeader?: (pageIndex: number) => ReactNode
   renderFooter?: (pageIndex: number) => ReactNode
+  /**
+   * Drop the page simulation and lay the note out as a column of text.
+   *
+   * For phones. A Letter page is 816px wide; on a 390px screen the fit scale
+   * bottoms out at half size and the reader scrolls sideways through every
+   * line. Shrinking further only makes it unreadable, so below a deliberate
+   * breakpoint the sheet stops pretending to be paper.
+   *
+   * Presentation only. The document, its page setup and what it prints are
+   * unchanged -- the same note opened on a laptop still has its pages, and
+   * printing from a phone still uses the paper it was set to.
+   */
+  reflow?: boolean
   /** The editor itself. */
   children: ReactNode
 }
 
 /**
  * The page is never auto-shrunk past this, so a narrow window scrolls
- * sideways instead of rendering text nobody can read. iPad portrait (768px,
- * the smallest screen this app targets) fits at 0.94, well clear of it.
+ * sideways instead of rendering text nobody can read. iPad portrait (768px)
+ * fits at 0.94, well clear of it.
+ *
+ * Below that width the answer is not a smaller page: it is no page at all.
+ * A phone at 390px would land here, at half size, and ask the reader to
+ * scroll sideways through every line -- so `reflow` turns the sheet into a
+ * column of text instead. This floor only governs the in-between.
  */
 const MIN_FIT_SCALE = 0.5
+
+/**
+ * Padding the text gets when there is no page to sit on.
+ *
+ * Not the document's own margins: an inch each side of a 390px screen leaves
+ * 198px for the writing, which is about four words a line. Print margins
+ * describe paper, and in reflow there is no paper.
+ */
+const REFLOW_INSET = 16
 
 export function PaginatedSheet({
   controller,
@@ -55,6 +82,7 @@ export function PaginatedSheet({
   pageNumbers = 'off',
   renderHeader,
   renderFooter,
+  reflow = false,
   children,
 }: PaginatedSheetProps) {
   const frameRef = useRef<HTMLDivElement>(null)
@@ -83,14 +111,21 @@ export function PaginatedSheet({
   const fitScale = availableWidth
     ? Math.max(MIN_FIT_SCALE, Math.min(1, availableWidth / geometry.pageWidth))
     : 1
-  const scale = zoom > 1 ? zoom : Math.min(zoom, fitScale)
+  /*
+   * Reflow renders at 1:1 and lets the width do the fitting. Zoom is still
+   * the writer's to set -- it is a text-size control on a phone rather than a
+   * page-size one -- but nothing is scaled down to make a page fit.
+   */
+  const scale = reflow ? zoom : zoom > 1 ? zoom : Math.min(zoom, fitScale)
 
   // Layout effect rather than a plain one: the engine reads this scale to
   // convert client rects back to CSS pixels, so it has to be right before the
   // browser can paint a frame the plugin might measure.
   useLayoutEffect(() => {
-    controller.configure({ geometry, scale, pageNumbers })
-  }, [controller, geometry, scale, pageNumbers])
+    // Pagination is off in reflow: there are no page boundaries to compute, and
+    // measuring for breaks nobody will see is work done to no end.
+    controller.configure({ geometry, scale, pageNumbers, enabled: !reflow })
+  }, [controller, geometry, scale, pageNumbers, reflow])
 
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   const pageCount = Math.max(1, snapshot.pageCount)
@@ -106,17 +141,18 @@ export function PaginatedSheet({
    * are no page boundaries to draw at all -- the stack itself is the paper:
    * one continuous sheet that always covers exactly as much as there is text.
    */
-  const paginated = snapshot.measured && snapshot.enabled
+  const paginated = snapshot.measured && snapshot.enabled && !reflow
 
   return (
     <div ref={frameRef} className="doc-frame">
       <div
         className="doc-stack"
         data-continuous={paginated ? undefined : ''}
+        data-reflow={reflow ? '' : undefined}
         style={
           {
-            width: geometry.pageWidth,
-            minHeight: stackHeight(geometry, pageCount),
+            width: reflow ? '100%' : geometry.pageWidth,
+            minHeight: reflow ? undefined : stackHeight(geometry, pageCount),
             zoom: scale,
             // Printing reads these back: the paper has to be the same width as
             // the page on screen, or the text rewraps and the printed copy
@@ -142,10 +178,10 @@ export function PaginatedSheet({
           className="doc-content"
           style={
             {
-              paddingTop: geometry.marginTop,
-              paddingRight: geometry.marginRight,
-              paddingBottom: geometry.marginBottom,
-              paddingLeft: geometry.marginLeft,
+              paddingTop: reflow ? REFLOW_INSET : geometry.marginTop,
+              paddingRight: reflow ? REFLOW_INSET : geometry.marginRight,
+              paddingBottom: reflow ? REFLOW_INSET * 4 : geometry.marginBottom,
+              paddingLeft: reflow ? REFLOW_INSET : geometry.marginLeft,
               // Caps an oversized image at one page, so it is scaled to fit
               // rather than bleeding across a page boundary.
               '--doc-printable-h': `${printableHeight(geometry)}px`,
@@ -180,8 +216,14 @@ export function PaginatedSheet({
         {/*
           Header and footer sit in the margin bands, outside the printable
           area, so they never collide with the text the writer is editing.
+
+          Not drawn in reflow: they are positioned into a margin band that no
+          longer exists there, and at a phone's inset they would land on top of
+          the first line. The note keeps them, and printing still draws them --
+          what is hidden is the band, not the content.
         */}
-        {renderHeader &&
+        {!reflow &&
+          renderHeader &&
           pages.map((index) => (
             <div
               key={`header-${index}`}
@@ -200,7 +242,8 @@ export function PaginatedSheet({
             </div>
           ))}
 
-        {renderFooter &&
+        {!reflow &&
+          renderFooter &&
           pages.map((index) => (
             <div
               key={`footer-${index}`}

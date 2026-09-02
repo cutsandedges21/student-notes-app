@@ -272,6 +272,33 @@
   @apply rounded-[2px] bg-surface shadow-sheet;
 }
 
+/*
+ * Reflow: the note as a column of text rather than as paper.
+ *
+ * On a phone a Letter page is twice the width of the screen, and the fit
+ * scale bottoms out at half size -- which is a page you scroll sideways
+ * through, one line at a time, at a text size nobody can read. Below the
+ * breakpoint the sheet stops being paper: it fills the width, drops the
+ * shadow and the rounded corner that say "sheet", and lets the text wrap to
+ * the screen.
+ *
+ * The document is unchanged. Its page setup still governs what prints.
+ */
+.doc-stack[data-reflow] {
+  @apply bg-surface;
+  border-radius: 0;
+  box-shadow: none;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* An image is capped to the printable height of a page it is no longer on,
+   which on a phone in landscape can be shorter than the screen. Width is the
+   only constraint that means anything here. */
+.doc-stack[data-reflow] .doc-image {
+  max-height: none;
+}
+
 .doc-pages {
   position: absolute;
   inset: 0;

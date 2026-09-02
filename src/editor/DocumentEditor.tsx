@@ -28,6 +28,7 @@ import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
 import { Pencil } from 'lucide-react'
 import { AI_SIDEBAR_SIDE } from '../constants/layout'
 import { imageFilesFrom } from '../services/imageUpload'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { cn } from '../lib/cn'
 
 const EMPTY_ZONE: JSONContent = { type: 'doc', content: [] }
@@ -255,6 +256,17 @@ export function DocumentEditor({
   )
 
   const geometry = useMemo<PageGeometry>(() => geometryFor(pageSetup), [pageSetup])
+
+  /*
+   * Below this, the page simulation is dropped and the note is laid out as a
+   * column of text.
+   *
+   * 768px is iPad portrait, the narrowest screen a Letter page fits on at a
+   * legible scale (0.94). Under it the fit bottoms out at half size, which is
+   * a page scrolled sideways one line at a time -- so phones get reflow and
+   * everything from a tablet up keeps its paper.
+   */
+  const reflow = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => {
     onGeometryChange?.(geometry)
@@ -690,6 +702,7 @@ export function DocumentEditor({
               pageNumbers={pageNumbers}
               renderHeader={(page) => renderZone('header', page)}
               renderFooter={(page) => renderZone('footer', page)}
+              reflow={reflow}
             >
               <EditorContent editor={editor} />
             </PaginatedSheet>
