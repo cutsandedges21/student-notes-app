@@ -8,6 +8,11 @@ import {
   type PageNumberPosition,
 } from '../editor/pagination/types'
 import { DocumentMenubar } from '../editor/DocumentMenubar'
+import { LinkDialog } from '../editor/LinkDialog'
+import { ImageDialog } from '../editor/ImageDialog'
+import { FindReplacePanel } from '../editor/FindReplacePanel'
+import { WordCountDialog } from '../editor/WordCountDialog'
+import { useDocumentDialogs } from '../editor/useDocumentDialogs'
 import { DocsTitleBar } from '../editor/DocsTitleBar'
 import { SelectionToolbar } from '../editor/SelectionToolbar'
 import { AiBubble } from '../editor/AiBubble'
@@ -126,6 +131,11 @@ export default function EditorPage() {
    */
   const [panelTab, setPanelTab] = useState('assistant')
   const [editor, setEditor] = useState<Editor | null>(null)
+  /*
+   * Link, image, find and word count. Both the menubar and the formatting
+   * toolbar reach them, and this is the lowest point that renders both.
+   */
+  const dialogs = useDocumentDialogs(editor)
   const [loaded, setLoaded] = useState(false)
   const [editable, setEditable] = useState(true)
   const [selection, setSelection] = useState<
@@ -514,12 +524,55 @@ export default function EditorPage() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [handlePrint])
 
-  // Ctrl/Cmd + Shift + A toggles the AI sidebar; Ctrl/Cmd + Alt + letter runs
-  // an AI action on the current selection.
+  /*
+   * Ctrl/Cmd+K and Ctrl/Cmd+H.
+   *
+   * Ctrl+K was printed beside Insert in the menu and listed in the shortcut
+   * reference, and was bound to nothing at all -- neither the app nor Tiptap's
+   * Link extension registers it, so the only thing pressing it ever did was
+   * open the browser's search bar. It is implemented here rather than deleted
+   * from both places because it is the binding people expect.
+   */
+  // Destructured so the effect depends on the two stable openers rather than
+  // the dialog object around them, which is rebuilt on every render and would
+  // rebind the listener on every keystroke.
+  const { openLink: openLinkDialog, toggleFind } = dialogs
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (!event.metaKey && !event.ctrlKey) return
+      if (event.altKey || event.shiftKey) return
+
+      const key = event.key.toLowerCase()
+      if (key === 'k') {
+        event.preventDefault()
+        openLinkDialog()
+      } else if (key === 'h') {
+        event.preventDefault()
+        toggleFind()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [openLinkDialog, toggleFind])
+
+  /*
+   * Ctrl/Cmd + Shift + A toggles the AI sidebar; Ctrl/Cmd + Alt + letter runs
+   * an AI action on the current selection.
+   *
+   * Captured at the window rather than left to bubble, and propagation is
+   * stopped once a binding matches. The editor sits inside this listener, so
+   * on the way up it would answer first -- and Ctrl+Alt+C is also Tiptap's
+   * code block, which is why running "Check my notes" used to turn the
+   * paragraph monospace. preventDefault alone would not have helped: the
+   * editor's keymap acts on the event whether or not the default is
+   * cancelled. Not reaching it is what stops it.
+   */
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'a') {
         event.preventDefault()
+        event.stopPropagation()
         setSidebarOpen((open) => !open)
         return
       }
@@ -528,14 +581,15 @@ export default function EditorPage() {
       if (!mode) return
 
       event.preventDefault()
+      event.stopPropagation()
       setSidebarOpen(true)
       // Read through a ref: this listener is registered once, so closing over
       // `selection` would pin it to whatever was highlighted on mount.
       setPendingMode({ mode, selection: selectionRef.current })
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
   }, [])
 
   /** Re-saves with whatever the body currently holds; used by the zones. */
@@ -899,6 +953,10 @@ export default function EditorPage() {
                 // cancel itself out.
                 onToggleFullScreen={() => setFullScreen((on) => !on)}
                 onShowShortcuts={() => setShortcutsOpen(true)}
+                onEditLink={dialogs.openLink}
+                onInsertImage={dialogs.openImage}
+                onFind={dialogs.toggleFind}
+                onShowWordCount={dialogs.openWordCount}
                 onPrint={handlePrint}
                 // Same document; the browser's dialog offers Save as PDF as a
                 // destination, which is what writes the file.
@@ -936,6 +994,9 @@ export default function EditorPage() {
           initialContent={doc.content as JSONContent}
           onChange={handleContentChange}
           onReady={setEditor}
+          onEditLink={dialogs.openLink}
+          onInsertImage={dialogs.openImage}
+          onFind={dialogs.toggleFind}
           onSelectionChange={handleSelectionChange}
           showRuler={showRuler}
           compact={compact}
@@ -1092,6 +1153,33 @@ export default function EditorPage() {
       />
 
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <LinkDialog
+        open={dialogs.open === 'link'}
+        initialHref={dialogs.linkHref}
+        onSubmit={dialogs.submitLink}
+        onRemove={dialogs.removeLink}
+        onClose={dialogs.close}
+      />
+
+      <ImageDialog
+        open={dialogs.open === 'image'}
+        onSubmit={dialogs.insertImage}
+        onClose={dialogs.close}
+      />
+
+      <WordCountDialog
+        open={dialogs.open === 'wordCount'}
+        document={dialogs.documentCounts}
+        selection={dialogs.selectionCounts}
+        onClose={dialogs.close}
+      />
+
+      <FindReplacePanel
+        editor={editor}
+        open={dialogs.open === 'find'}
+        onClose={dialogs.close}
+      />
 
       {fullScreen && (
         <AiBubble open={sidebarOpen} onClick={() => setSidebarOpen((open) => !open)} />

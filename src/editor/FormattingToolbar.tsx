@@ -36,11 +36,18 @@ interface FormattingToolbarProps {
   onAddComment?: () => void
   /** False with nothing selected: there would be nothing to anchor to. */
   canAddComment?: boolean
-  /** Opens the link dialog; the toolbar no longer prompts. */
+  /*
+   * The three below open dialogs owned by `EditorPage`, which is where the
+   * editor instance and both toolbar surfaces meet. Each is optional, and an
+   * omitted one hides its button rather than falling back to a prompt: a
+   * surface that cannot open the dialog cannot do the thing, and a button that
+   * silently does something worse is not a fallback.
+   */
+  /** Opens the link dialog. */
   onEditLink?: () => void
   /** Opens the image dialog. */
   onInsertImage?: () => void
-  /** Opens the find-and-replace panel. */
+  /** Toggles the find-and-replace panel. */
   onFind?: () => void
 }
 
@@ -289,69 +296,6 @@ export function FormattingToolbar({
     editor.chain().focus().setFontSize(`${clamped}pt`).run()
   }
 
-  const promptForLink = () => {
-    const previous = editor.getAttributes('link').href ?? ''
-    const url = window.prompt('Link URL', previous)
-    if (url === null) return
-    if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run()
-      return
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
-  }
-
-  const promptForImage = () => {
-    const url = window.prompt('Image URL')
-    if (!url) return
-    editor.chain().focus().setImage({ src: url }).run()
-  }
-
-  /**
-   * Find, walking the document's text nodes.
-   *
-   * Searching the flattened text would be simpler, but its offsets don't map
-   * back onto ProseMirror positions, so the selection would land in the wrong
-   * place in any document with more than one block.
-   */
-  const findInDocument = () => {
-    const query = window.prompt('Find in document')?.trim()
-    if (!query) return
-
-    const needle = query.toLowerCase()
-    const after = editor.state.selection.to
-    let first = -1
-    let next = -1
-
-    editor.state.doc.descendants((node, pos) => {
-      if (!node.isText || !node.text) return
-      const haystack = node.text.toLowerCase()
-
-      for (
-        let index = haystack.indexOf(needle);
-        index !== -1;
-        index = haystack.indexOf(needle, index + 1)
-      ) {
-        const at = pos + index
-        if (first === -1) first = at
-        // Wraps to the top once the caret is past the last match.
-        if (next === -1 && at >= after) next = at
-      }
-    })
-
-    const hit = next === -1 ? first : next
-    if (hit === -1) {
-      window.alert(`No matches for "${query}".`)
-      return
-    }
-
-    editor
-      .chain()
-      .focus()
-      .setTextSelection({ from: hit, to: hit + query.length })
-      .scrollIntoView()
-      .run()
-  }
-
   /**
    * Paint format is a two-click tool: the first click copies the formatting
    * under the caret, the second applies it to whatever is selected.
@@ -474,7 +418,9 @@ export function FormattingToolbar({
             disabled={!state.canRedo}
             onClick={() => editor.chain().focus().redo().run()}
           />
-          <ToolButton label="Find and replace" icon={Search} onClick={onFind ?? findInDocument} />
+          {onFind && (
+            <ToolButton label="Find and replace" icon={Search} onClick={onFind} />
+          )}
           <ToolButton label="Print" icon={Printer} onClick={() => onPrint?.()} />
           {/* No pressed state: spell check is on by default, and Docs leaves
               the button plain rather than lighting up on load. */}
@@ -669,12 +615,14 @@ export function FormattingToolbar({
 
         <Divider />
 
-        <ToolButton
-          label="Insert link"
-          icon={Link2}
-          active={state.isLink}
-          onClick={onEditLink ?? promptForLink}
-        />
+        {onEditLink && (
+          <ToolButton
+            label={state.isLink ? 'Edit link' : 'Insert link'}
+            icon={Link2}
+            active={state.isLink}
+            onClick={onEditLink}
+          />
+        )}
         {/* Disabled until there is a selection, because a comment with no
             anchor has nothing to point at. Not rendered at all where commenting
             is impossible -- a dead control that explains itself is still a dead
@@ -687,7 +635,9 @@ export function FormattingToolbar({
             disabled={!canAddComment}
           />
         )}
-        <ToolButton label="Insert image" icon={ImageIcon} onClick={onInsertImage ?? promptForImage} />
+        {onInsertImage && (
+          <ToolButton label="Insert image" icon={ImageIcon} onClick={onInsertImage} />
+        )}
 
         {/*
           One control for both jobs: sweeping the grid inserts a table, and the

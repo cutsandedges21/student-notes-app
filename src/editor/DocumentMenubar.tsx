@@ -184,6 +184,16 @@ interface DocumentMenubarProps {
   onExportPdf: () => void
   /** Opens the keyboard shortcut reference. */
   onShowShortcuts: () => void
+  /*
+   * Shared with the formatting toolbar. Both surfaces offer link, image, find
+   * and word count, and both used to implement them separately -- which is how
+   * they came to disagree about what an empty link prompt meant. They now call
+   * the same openers, owned by `EditorPage`.
+   */
+  onEditLink: () => void
+  onInsertImage: () => void
+  onFind: () => void
+  onShowWordCount: () => void
   /** Where the page number sits in the footer, or `off`. */
   pageNumbers: PageNumberPosition
   onPageNumbersChange: (position: PageNumberPosition) => void
@@ -203,6 +213,10 @@ export function DocumentMenubar({
   onPrint,
   onExportPdf,
   onShowShortcuts,
+  onEditLink,
+  onInsertImage,
+  onFind,
+  onShowWordCount,
   pageNumbers,
   onPageNumbersChange,
 }: DocumentMenubarProps) {
@@ -237,17 +251,6 @@ export function DocumentMenubar({
 
   const chain = () => editor.chain().focus()
 
-  const promptForLink = () => {
-    const url = window.prompt('Link URL', editor.getAttributes('link').href ?? '')
-    if (!url) return
-    chain().extendMarkRange('link').setLink({ href: url }).run()
-  }
-
-  const promptForImage = () => {
-    const url = window.prompt('Image URL')
-    if (url) chain().setImage({ src: url }).run()
-  }
-
   /**
    * Two things at once: the app hides its own chrome, and the browser gives up
    * its window furniture. The request can be refused or unavailable, so the
@@ -261,18 +264,6 @@ export function DocumentMenubar({
     } else {
       void document.documentElement.requestFullscreen().catch(() => undefined)
     }
-  }
-
-  const showWordCount = () => {
-    const text = editor.getText({ blockSeparator: ' ' })
-    const words = text.split(/\s+/).filter(Boolean).length
-    window.alert(
-      [
-        `Words: ${words}`,
-        `Characters: ${text.length}`,
-        `Characters excluding spaces: ${text.replace(/\s/g, '').length}`,
-      ].join('\n'),
-    )
   }
 
   const menus: { label: string; items: MenuAction[] }[] = [
@@ -315,6 +306,12 @@ export function DocumentMenubar({
           onSelect: () => chain().selectAll().run(),
           separatorBefore: true,
         },
+        {
+          label: 'Find and replace',
+          shortcut: 'Ctrl+H',
+          onSelect: onFind,
+          separatorBefore: true,
+        },
       ],
     },
     {
@@ -334,8 +331,8 @@ export function DocumentMenubar({
     {
       label: 'Insert',
       items: [
-        { label: 'Link', shortcut: 'Ctrl+K', onSelect: promptForLink },
-        { label: 'Image', onSelect: promptForImage },
+        { label: 'Link', shortcut: 'Ctrl+K', onSelect: onEditLink },
+        { label: 'Image', onSelect: onInsertImage },
         {
           label: 'Table',
           // Sweep to size, the same control the toolbar offers. A fixed 3x3
@@ -401,7 +398,7 @@ export function DocumentMenubar({
     {
       label: 'Tools',
       items: [
-        { label: 'Word count', onSelect: showWordCount },
+        { label: 'Word count', onSelect: onShowWordCount },
         {
           label: 'Spelling and grammar',
           checked: editor.view.dom.getAttribute('spellcheck') !== 'false',

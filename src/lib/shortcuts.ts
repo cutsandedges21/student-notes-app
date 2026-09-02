@@ -101,6 +101,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'Ctrl+Enter', description: 'Page break' },
       { keys: 'Shift+Enter', description: 'Line break' },
       { keys: 'Ctrl+K', description: 'Insert link' },
+      { keys: 'Ctrl+H', description: 'Find and replace' },
       { keys: 'Ctrl+P', description: 'Print' },
     ],
   },

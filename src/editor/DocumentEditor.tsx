@@ -160,6 +160,15 @@ interface DocumentEditorProps {
   onAddComment?: () => void
   /** False with nothing selected: a comment would have nothing to anchor to. */
   canAddComment?: boolean
+  /*
+   * Passed straight through to the toolbar. The dialogs they open are owned by
+   * EditorPage, which also feeds the menubar, so both surfaces open the same
+   * one. Omitting any of them hides its button rather than substituting a
+   * browser prompt.
+   */
+  onEditLink?: () => void
+  onInsertImage?: () => void
+  onFind?: () => void
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
   /** Where the page number sits in the footer band, or `off`. */
@@ -189,6 +198,9 @@ export function DocumentEditor({
   onPrint,
   onAddComment,
   canAddComment = false,
+  onEditLink,
+  onInsertImage,
+  onFind,
   onHeaderChange,
   onFooterChange,
   pageNumbers = 'off',
@@ -488,6 +500,9 @@ export function DocumentEditor({
           onPrint={onPrint}
           onAddComment={onAddComment}
           canAddComment={canAddComment}
+          onEditLink={onEditLink}
+          onInsertImage={onInsertImage}
+          onFind={onFind}
         />
       )}
       <div
