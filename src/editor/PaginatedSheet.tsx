@@ -144,7 +144,7 @@ export function PaginatedSheet({
   const paginated = snapshot.measured && snapshot.enabled && !reflow
 
   return (
-    <div ref={frameRef} className="doc-frame">
+    <div ref={frameRef} className="doc-frame" data-reflow={reflow ? '' : undefined}>
       <div
         className="doc-stack"
         data-continuous={paginated ? undefined : ''}

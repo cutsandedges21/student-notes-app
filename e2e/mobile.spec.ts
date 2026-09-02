@@ -65,6 +65,23 @@ test.describe('on a phone', () => {
     await expect(body(page)).toContainText('Typed on a phone.')
   })
 
+  /**
+   * Sized by its text, the sheet stopped at the last line and left the rest of
+   * the phone as grey backdrop -- and tapping there put the caret nowhere, so
+   * the obvious gesture for "carry on writing" did nothing.
+   */
+  test('the writing surface fills the screen, not just the text', async ({ page }) => {
+    await typeInBody(page, 'One short line.')
+
+    const sheet = await page.locator('.doc-stack').evaluate((node) => {
+      const box = node.getBoundingClientRect()
+      return { top: box.top, bottom: box.bottom }
+    })
+
+    // It reaches the bottom of the viewport rather than stopping under the text.
+    expect(sheet.bottom).toBeGreaterThan(PHONE.height * 0.8)
+  })
+
   test('wraps text to the screen rather than to the paper', async ({ page }) => {
     await typeInBody(page, 'word '.repeat(60))
 

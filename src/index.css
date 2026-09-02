@@ -1060,3 +1060,23 @@ dialog[open]::backdrop {
     rgba(60, 64, 67, 0.2) 0 1px 4px 0,
     rgba(60, 64, 67, 0.12) 0 6px 14px 0;
 }
+
+/*
+ * In reflow the writing surface fills the screen.
+ *
+ * Sized by its text, the sheet stopped at the last line and left the rest of
+ * a phone as grey backdrop -- most of the screen, doing nothing, on the one
+ * device where the screen is all you have. Worse than the look: tapping there
+ * put the caret nowhere, so the obvious gesture for "carry on writing" did
+ * nothing at all.
+ */
+.doc-frame[data-reflow] {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding-bottom: 0;
+}
+
+.doc-stack[data-reflow] {
+  flex: 1 1 auto;
+}
