@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import katex from 'katex'
 import { Button } from '../components/ui/Button'
+import { MathPalette } from './MathPalette'
+import type { MathSymbol } from './mathSymbols'
 
 /**
  * Write an equation: type the source, see it set, accept it.
@@ -96,6 +98,34 @@ export function EquationDialog({
     if (previewRef.current) previewRef.current.innerHTML = html
   }, [html])
 
+  /**
+   * Writes a picked symbol into the source at the caret.
+   *
+   * Replaces the selection rather than ignoring it, so a wrong symbol can be
+   * swapped by highlighting it and picking another. The caret then goes where
+   * the entry says -- inside a structure's first slot, or after a plain
+   * symbol -- and focus returns to the box, so a formula can be built by
+   * alternating picks and typing without reaching for the mouse in between.
+   */
+  function insertSymbol(item: MathSymbol) {
+    const field = inputRef.current
+    const start = field?.selectionStart ?? latex.length
+    const end = field?.selectionEnd ?? latex.length
+
+    const next = latex.slice(0, start) + item.insert + latex.slice(end)
+    const caret = start + (item.caret ?? item.insert.length)
+
+    setLatex(next)
+
+    // After the value lands, or the browser puts the caret at the end.
+    requestAnimationFrame(() => {
+      const node = inputRef.current
+      if (!node) return
+      node.focus()
+      node.setSelectionRange(caret, caret)
+    })
+  }
+
   function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!canAccept) return
@@ -110,7 +140,10 @@ export function EquationDialog({
         if (event.target === ref.current) onClose()
       }}
       aria-labelledby="equation-dialog-title"
-      className="w-full max-w-lg rounded-lg border border-line bg-surface p-0 shadow-sheet backdrop:bg-ink/30"
+      // Wide enough for the widest palette to open inside it. At the previous
+      // width the Math grid ran past the right edge and put a scrollbar on the
+      // dialog.
+      className="w-full max-w-2xl rounded-lg border border-line bg-surface p-0 shadow-sheet backdrop:bg-ink/30"
     >
       <form onSubmit={submit} className="p-6">
         <h2 id="equation-dialog-title" className="text-lg font-medium text-ink">
@@ -118,9 +151,11 @@ export function EquationDialog({
         </h2>
 
         <div className="mt-4">
-          <label htmlFor="equation-latex" className="block text-sm font-medium text-ink">
+          <label htmlFor="equation-latex" className="mb-1 block text-sm font-medium text-ink">
             Equation
           </label>
+          <MathPalette onInsert={insertSymbol} />
+
           <textarea
             id="equation-latex"
             ref={inputRef}
@@ -138,17 +173,18 @@ export function EquationDialog({
                 submit(event)
               }
             }}
-            className="mt-1 w-full rounded border border-line bg-surface px-3 py-2 font-mono text-sm text-ink focus:border-accent focus:outline-none"
-            placeholder="\frac{-b \pm \sqrt{b^2-4ac}}{2a}"
+            className="mt-2 w-full rounded border border-line bg-surface px-3 py-2 font-mono text-sm text-ink focus:border-accent focus:outline-none"
+            placeholder="Pick symbols above, and type the numbers and letters."
           />
           <p id="equation-hint" className="mt-1 text-xs text-ink-subtle">
-            LaTeX. Ctrl+Enter to accept.
+            Pick symbols from the menus above. Ctrl+Enter to accept.
           </p>
         </div>
 
         <div className="mt-4">
           <span className="block text-sm font-medium text-ink">Preview</span>
           <div
+            data-testid="equation-preview"
             className={sheet(error)}
             /*
              * The preview is announced as a whole when it settles rather than

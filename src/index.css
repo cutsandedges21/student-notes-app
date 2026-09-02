@@ -842,3 +842,15 @@
     animation: none;
   }
 }
+
+/*
+ * The equation symbol palettes.
+ *
+ * KaTeX sets its own type at 1.21em so formulas sit correctly in running
+ * prose. On a grid of buttons that is just oversized, and it is what made the
+ * wider structures overlap their neighbours.
+ */
+.math-palette__key .katex,
+.math-palette__menu .katex {
+  font-size: 1em;
+}

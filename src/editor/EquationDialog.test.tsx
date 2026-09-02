@@ -26,6 +26,15 @@ function setup(props: Partial<Parameters<typeof EquationDialog>[0]> = {}) {
 const field = () => screen.getByLabelText('Equation')
 const accept = () => screen.getByRole('button', { name: /insert|update/i })
 
+/**
+ * KaTeX inside the preview specifically.
+ *
+ * The symbol palettes are set in maths as well, so their glyphs answer a
+ * document-wide `.katex` query whatever the preview is doing.
+ */
+const previewMath = () =>
+  screen.getByTestId('equation-preview').querySelector('.katex')
+
 describe('EquationDialog', () => {
   it('starts with nothing to accept', () => {
     setup()
@@ -40,7 +49,7 @@ describe('EquationDialog', () => {
     await user.paste('a^2 + b^2 = c^2')
 
     // KaTeX marks its output with this class; its presence is the result.
-    expect(document.querySelector('.katex')).not.toBeNull()
+    expect(previewMath()).not.toBeNull()
     expect(accept()).toBeEnabled()
   })
 
@@ -50,7 +59,7 @@ describe('EquationDialog', () => {
     await user.click(field())
     await user.paste('\\frac{')
 
-    expect(document.querySelector('.katex')).toBeNull()
+    expect(previewMath()).toBeNull()
     expect(accept()).toBeDisabled()
     // KaTeX names the token it choked on; the prefix is stripped.
     expect(screen.queryByText(/^KaTeX parse error/)).toBeNull()
@@ -64,7 +73,7 @@ describe('EquationDialog', () => {
     expect(accept()).toBeDisabled()
 
     await user.paste('a}{b}')
-    expect(document.querySelector('.katex')).not.toBeNull()
+    expect(previewMath()).not.toBeNull()
     expect(accept()).toBeEnabled()
   })
 
