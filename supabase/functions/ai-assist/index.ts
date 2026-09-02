@@ -13,6 +13,8 @@ import { AI_PROMPT_VERSION, SYSTEM_PROMPT } from './prompts/studentAssistant.ts'
 import { buildAIContext } from './context.ts'
 import { corsHeaders } from './cors.ts'
 import { LIMITS, parseAiResponse, requestSchema } from './validate.ts'
+import { MAX_TOOL_CALLS, functionDeclarations, runTool } from './tools/registry.ts'
+import type { ToolContext } from './tools/types.ts'
 
 // Overridable, because Google retires models on its own schedule: when this
 // default dies the fix is a secret, not a redeploy.
@@ -192,8 +194,20 @@ Deno.serve(async (req: Request) => {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
-  try {
-    const geminiResponse = await fetch(
+  /**
+   * Who the tools run as.
+   *
+   * The same RLS-scoped client this function already uses, so a tool cannot
+   * reach further than the request that asked for it. Nothing in here is
+   * derived from model output.
+   */
+  const toolContext: ToolContext = { supabase, userId, documentId, classId }
+
+  /** Every turn so far, including the model's tool calls and their results. */
+  const contents: unknown[] = [{ role: 'user', parts: [{ text: prompt }] }]
+
+  const callGemini = () =>
+    fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
       {
         method: 'POST',
@@ -203,7 +217,16 @@ Deno.serve(async (req: Request) => {
         signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          contents,
+          /*
+           * Tools and a response schema together.
+           *
+           * Gemini 3 supports the combination; on a model that does not, the
+           * API rejects the request outright rather than quietly ignoring one
+           * of them, so this fails loudly at the first call rather than
+           * silently answering without ever searching.
+           */
+          tools: [{ functionDeclarations: functionDeclarations() }],
           generationConfig: {
             temperature: 0.4,
             maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -214,27 +237,77 @@ Deno.serve(async (req: Request) => {
       },
     )
 
-    if (geminiResponse.status === 429) {
-      await close('error', 0)
-      return fail('RATE_LIMIT', 429, { retryAfterSeconds: 60 })
+  try {
+    let payload: Record<string, unknown> | undefined
+    let text: string | undefined
+    let toolCallsMade = 0
+
+    /*
+     * Answer, or ask for a tool and come back.
+     *
+     * The ceiling is what stops a model that keeps searching for something
+     * that is not there from being billed per attempt. Hitting it is not an
+     * error: the loop stops offering tools and takes whatever answer comes
+     * back, because a partial answer beats a failure.
+     */
+    for (let round = 0; round <= MAX_TOOL_CALLS; round += 1) {
+      const geminiResponse = await callGemini()
+
+      if (geminiResponse.status === 429) {
+        await close('error', 0)
+        return fail('RATE_LIMIT', 429, { retryAfterSeconds: 60 })
+      }
+
+      if (!geminiResponse.ok) {
+        // Logged for developers; never surfaced to the student.
+        console.error('[ai-assist] gemini error', geminiResponse.status, await geminiResponse.text())
+        await close('error', 0)
+        return fail('UPSTREAM_ERROR', 502)
+      }
+
+      payload = await geminiResponse.json()
+      const candidate = (payload as Record<string, any>)?.candidates?.[0]
+      const parts: unknown[] = candidate?.content?.parts ?? []
+
+      const calls = parts
+        .map((part) => (part as { functionCall?: { name?: string; args?: unknown } })?.functionCall)
+        .filter((call): call is { name: string; args: unknown } => typeof call?.name === 'string')
+
+      if (calls.length === 0 || round === MAX_TOOL_CALLS) {
+        // The first part is not reliably the answer: reasoning models put a
+        // thought signature in its own part and the JSON in a later one. Take
+        // the first part that actually carries text.
+        text = parts
+          .map((part) => (part as { text?: unknown })?.text)
+          .find((value): value is string => typeof value === 'string')
+        break
+      }
+
+      toolCallsMade += calls.length
+
+      // The model's own turn has to go back in, or the function responses
+      // below have nothing to answer.
+      contents.push(candidate.content)
+
+      const results = await Promise.all(
+        calls.map(async (call) => ({
+          functionResponse: {
+            name: call.name,
+            // Wrapped rather than passed bare: a tool that failed reports it
+            // as data the model can read and account for, which is what keeps
+            // "there is nothing about this in your notes" from becoming an
+            // error the student sees.
+            response: await runTool(call.name, call.args, toolContext),
+          },
+        })),
+      )
+
+      contents.push({ role: 'user', parts: results })
     }
 
-    if (!geminiResponse.ok) {
-      // Logged for developers; never surfaced to the student.
-      console.error('[ai-assist] gemini error', geminiResponse.status, await geminiResponse.text())
-      await close('error', 0)
-      return fail('UPSTREAM_ERROR', 502)
+    if (toolCallsMade > 0) {
+      console.info('[ai-assist] tool calls', { requestId, mode, toolCallsMade })
     }
-
-    const payload = await geminiResponse.json()
-
-    // The first part is not reliably the answer: reasoning models put a
-    // thought signature in its own part and the JSON in a later one. Take the
-    // first part that actually carries text.
-    const parts: unknown[] = payload?.candidates?.[0]?.content?.parts ?? []
-    const text = parts
-      .map((part) => (part as { text?: unknown })?.text)
-      .find((value): value is string => typeof value === 'string')
 
     if (typeof text !== 'string') {
       console.error('[ai-assist] unexpected gemini payload', JSON.stringify(payload).slice(0, 800))

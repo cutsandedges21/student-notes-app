@@ -250,7 +250,63 @@ a conflict. The commands to wire are `toggleSuperscript`, `toggleSubscript`,
 ### Phase 4 — Mobile `TODO`
 Reflow mode below a deliberate breakpoint. No half-scale Letter page on a phone.
 
-### Phase 5 — Real AI assistant `TODO`
+### Phase 5 — Real AI assistant `IN PROGRESS`
+
+Much of what the audit lists here was already done in Phase 1 and had to be
+re-measured rather than re-fixed: the endpoint verifies auth, enforces quota and
+rate limits **in Postgres**, restricts CORS to an allowlist, caps request and
+output size, validates every model response with Zod, and records prompt version
+and model against each request — so §25's "durable prompt versioning" is a
+column, not a `console.log`. The genuine gaps are conversations, structured
+context, streaming, tools, retrieval, citations and evals.
+
+**Increment 1 — the tool layer `DONE`.** 664 unit tests (from 645), `tsc` clean,
+lint unchanged, build green.
+
+The rule the layer exists to enforce: **the model never touches the database.**
+It names a tool and supplies arguments; the registry decides whether that is
+something this caller may do, and then does it. No SQL, no table name and no
+filter is ever derived from model output.
+
+| Decision | Why |
+| --- | --- |
+| One dispatch point (`runTool`) | Validation, ownership context and the audit line must happen on every call, and the way they stop happening is a second call site that forgot one |
+| Zod schema **and** a hand-written Gemini declaration per tool | A converter would be hundreds of lines and could not write the descriptions, which are the only thing deciding whether a tool is used correctly. A test asserts the two describe the same arguments, which is the drift that would matter |
+| Tools never throw | A failure is information the model needs to say something true. An exception would turn "there is nothing about this in your notes" into a generic error |
+| Read-only tools only, in this increment | `search_notes` and `read_note` cannot destroy anything, which makes them the right thing to prove the layer on |
+| `MAX_TOOL_CALLS = 4`, and hitting it is not an error | Without a ceiling, a model looping on a search that returns nothing is billed per attempt. A partial answer beats a failure |
+| Tools + `responseSchema` in one request | Verified against the Gemini 3 docs rather than assumed; the combination is documented as supported |
+
+**Server tools vs client proposals — the boundary that matters.** Anything that
+edits the *open* note is not a server tool and never will be. The browser holds
+the live editor and, under collaboration, the CRDT: a server writing to
+`documents.content` during a live Yjs session writes to a column that is no
+longer the document, and the next sync discards it —
+`history/restoreContent.ts` records the same hazard from the other side. So a
+change to the open note comes back as a proposal the browser applies through the
+anchored applier, after a human says yes.
+
+`create_note` is deliberately **not** here yet for a second reason: it needs a
+slug, and a `slugify` in Deno would be a second implementation of a rule
+`lib/slug.ts` already owns. Two implementations of one rule is how this codebase
+got a link prompt that meant different things in the toolbar and the menu.
+
+**What is not verified.** The tool loop has never run against the live API —
+there is no Gemini key in this environment. `tools/live.test.ts` is the check
+that would settle it, and it skips without a key rather than pretending:
+
+```
+GEMINI_API_KEY=... npx vitest run supabase/functions/ai-assist/tools/live.test.ts
+```
+
+It imports the real declarations rather than restating them, so it cannot pass
+against a copy that has drifted from what ships.
+
+**Increment 2 — remaining:** persistent conversations (the tables exist and are
+empty), structured document context, streaming and cancel, write tools behind an
+approval step, citations in the transcript, RAG, and the eval suite.
+
+### Phase 5 archive — original scope `TODO`
 Persistent conversations, structured document context, streaming + cancel, validated
 tool calling, RAG with citations, eval suite, prompt versioning, quotas.
 
