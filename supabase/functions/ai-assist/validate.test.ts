@@ -161,3 +161,70 @@ describe('requestSchema', () => {
     ).toBe(false)
   })
 })
+
+/**
+ * Citations.
+ *
+ * A citation the student clicks and finds unrelated is worse than no citation,
+ * because they will have trusted it. The id is what the UI turns into a link,
+ * so it is validated as a uuid rather than taken as a string -- a model that
+ * invents an id produces a source that looks authoritative and goes nowhere.
+ */
+describe('sources', () => {
+  const ID = '33333333-3333-4333-8333-333333333333'
+
+  const withSources = (sources: unknown) =>
+    parseAiResponse(
+      JSON.stringify({
+        response: 'Your notes say oxygen is the final electron acceptor.',
+        issues: [],
+        added_information: [],
+        sources,
+      }),
+      'CHAT',
+    )
+
+  it('accepts a note the assistant read', () => {
+    const parsed = withSources([{ documentId: ID, title: 'Lecture 4', className: 'Biology' }])
+
+    expect(parsed?.sources).toEqual([
+      { documentId: ID, title: 'Lecture 4', className: 'Biology' },
+    ])
+  })
+
+  it('defaults to none, so an uncited answer is not a broken one', () => {
+    const parsed = parseAiResponse(
+      JSON.stringify({ response: 'General answer.', issues: [], added_information: [] }),
+      'CHAT',
+    )
+
+    expect(parsed?.sources).toEqual([])
+  })
+
+  it('rejects the whole response when an id is invented', () => {
+    expect(withSources([{ documentId: 'lecture-4', title: 'Lecture 4' }])).toBeNull()
+  })
+
+  it('rejects a source with no title to show', () => {
+    expect(withSources([{ documentId: ID, title: '' }])).toBeNull()
+  })
+
+  it('fills in a missing class rather than failing', () => {
+    const parsed = withSources([{ documentId: ID, title: 'Lecture 4' }])
+
+    expect(parsed?.sources[0].className).toBe('')
+  })
+
+  it('refuses a citation list longer than an answer could have', () => {
+    const many = Array.from({ length: LIMITS.sources + 1 }, (_, index) => ({
+      documentId: `3333333${index}-3333-4333-8333-333333333333`.slice(0, 36),
+      title: `Note ${index}`,
+    }))
+
+    expect(withSources(many)).toBeNull()
+  })
+
+  it('is not fooled by a source that is not an object', () => {
+    expect(withSources(['Lecture 4'])).toBeNull()
+  })
+})

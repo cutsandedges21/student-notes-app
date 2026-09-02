@@ -55,6 +55,20 @@ export interface AiResponse {
   issues: AiIssue[]
   /** Claims the model contributed beyond what the notes contained. */
   added_information: string[]
+  /**
+   * The student's own notes the answer drew on.
+   *
+   * Populated only when the assistant actually read them, which means only
+   * when it called a tool. The card turns each into a link, so an answer can
+   * be checked against the note it came from.
+   */
+  sources: AiSource[]
+}
+
+export interface AiSource {
+  documentId: string
+  title: string
+  className: string
 }
 
 export interface AiConversationTurn {

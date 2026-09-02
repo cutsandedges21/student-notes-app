@@ -1,5 +1,6 @@
+import { FileText } from 'lucide-react'
 import { Button } from '../components/ui/Button'
-import type { AiIssue, AiResponse } from '../types/ai'
+import type { AiIssue, AiResponse, AiSource } from '../types/ai'
 
 /**
  * Renders a proposed edit. The student decides; nothing is ever applied on
@@ -25,6 +26,55 @@ function AddedInformation({ items }: { items: string[] }) {
       <ul className="mt-1.5 list-disc space-y-1 pl-4 text-sm text-ink-muted">
         {items.map((item) => (
           <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * The notes an answer came from.
+ *
+ * The counterpart to AddedInformation above, and the more useful half: that
+ * one says "I made this up", this one says "go and check". Only the notes the
+ * assistant actually opened appear here -- the prompt forbids citing a note it
+ * did not read, and the id is validated as a uuid on the way in, because a
+ * citation that looks authoritative and goes nowhere is worse than none.
+ *
+ * Rendered as a button rather than a link: the panel does not know a note's
+ * class slug, and the caller does. It is also the caller that decides whether
+ * opening one should leave the note being edited.
+ */
+function Sources({
+  sources,
+  onOpen,
+}: {
+  sources: AiSource[]
+  onOpen?: (source: AiSource) => void
+}) {
+  if (sources.length === 0) return null
+
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">
+        From your notes
+      </p>
+      <ul className="mt-1.5 space-y-1">
+        {sources.map((source) => (
+          <li key={source.documentId}>
+            <button
+              type="button"
+              onClick={onOpen ? () => onOpen(source) : undefined}
+              disabled={!onOpen}
+              className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-sm text-ink-muted transition-colors enabled:hover:bg-surface-hover enabled:hover:text-ink disabled:cursor-default"
+            >
+              <FileText size={13} className="shrink-0 text-ink-faint" />
+              <span className="truncate">{source.title}</span>
+              {source.className && (
+                <span className="shrink-0 text-xs text-ink-faint">{source.className}</span>
+              )}
+            </button>
+          </li>
         ))}
       </ul>
     </div>
@@ -80,6 +130,12 @@ interface SuggestionCardProps {
   onReject: () => void
   onFixIssue: (issue: AiIssue) => void
   onDismissIssue: (issue: AiIssue) => void
+  /**
+   * Opens a cited note. Absent where the panel cannot navigate -- a shared
+   * note opened by a visitor -- in which case the citation still names the
+   * note but does not pretend to be a link.
+   */
+  onOpenSource?: (source: AiSource) => void
 }
 
 export function SuggestionCard({
@@ -87,6 +143,7 @@ export function SuggestionCard({
   original,
   onApply,
   onReject,
+  onOpenSource,
   onFixIssue,
   onDismissIssue,
 }: SuggestionCardProps) {
@@ -136,6 +193,7 @@ export function SuggestionCard({
       )}
 
       <AddedInformation items={result.added_information} />
+      <Sources sources={result.sources} onOpen={onOpenSource} />
     </div>
   )
 }

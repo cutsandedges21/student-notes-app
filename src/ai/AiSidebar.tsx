@@ -8,6 +8,7 @@ import { AI_SHORTCUT_KEYS, AI_SHORTCUT_ORDER } from '../lib/shortcuts'
 import { cn } from '../lib/cn'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useOpenSource } from './useOpenSource'
 
 export type { AiSelection } from './AiConversation'
 
@@ -146,6 +147,7 @@ function MenuView({
 
 export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
   const { session } = useAuth()
+  const { openSource, sourceError, clearSourceError } = useOpenSource()
   const {
     turns,
     busy,
@@ -298,6 +300,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
                 onReject={() => dismissTurn(turn.id)}
                 onFixIssue={(issue) => applyIssueFix(issue, turn.target)}
                 onDismissIssue={() => undefined}
+                onOpenSource={openSource}
               />
             ) : (
               <div key={turn.id} className="flex gap-2">
@@ -322,6 +325,22 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
         {error && (
           <p role="alert" className="mt-4 text-sm text-red-600">
             {error}
+          </p>
+        )}
+
+        {/* A citation that resolves to nothing. Shown rather than swallowed:
+            the whole value of citing a note is that it can be checked, so
+            "that note is not there" is the one answer worth interrupting for. */}
+        {sourceError && (
+          <p role="alert" className="mt-4 flex items-start gap-2 text-sm text-red-600">
+            <span className="flex-1">{sourceError}</span>
+            <button
+              type="button"
+              onClick={clearSourceError}
+              className="shrink-0 underline underline-offset-2"
+            >
+              Dismiss
+            </button>
           </p>
         )}
       </div>

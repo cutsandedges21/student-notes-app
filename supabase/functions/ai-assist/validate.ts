@@ -34,6 +34,9 @@ export const LIMITS = {
   proposedContentChars: 40_000,
   issues: 50,
   addedInformation: 50,
+  /** Notes cited in one answer. More than this is not an answer, it is a list. */
+  sources: 10,
+  sourceTitle: 300,
 } as const
 
 export const AI_MODES = [
@@ -79,6 +82,20 @@ export const issueSchema = z.object({
   confidence: z.enum(['high', 'medium', 'low']),
 })
 
+/**
+ * A note the answer drew on.
+ *
+ * `documentId` is validated as a uuid rather than taken as a string, because
+ * the UI turns it into a link. A model that invented an id would otherwise
+ * produce a citation that looks authoritative and goes nowhere -- worse than
+ * no citation, because the student would trust it.
+ */
+export const sourceSchema = z.object({
+  documentId: z.string().uuid(),
+  title: z.string().min(1).max(LIMITS.sourceTitle),
+  className: z.string().max(LIMITS.sourceTitle).optional().default(''),
+})
+
 export const responseSchema = z.object({
   response: z.string().max(LIMITS.responseChars),
   proposed_content: z
@@ -93,6 +110,15 @@ export const responseSchema = z.object({
     .array(z.string().max(LIMITS.responseChars))
     .max(LIMITS.addedInformation)
     .default([]),
+  /*
+   * Which of the student's notes the answer came from.
+   *
+   * Only populated when the assistant actually read them, which now means
+   * only when it called a tool. An answer a student cannot check against
+   * their own notes is worth very little, and one that cites a note it never
+   * opened is worth less than nothing.
+   */
+  sources: z.array(sourceSchema).max(LIMITS.sources).default([]),
 })
 
 export type ValidatedResponse = z.infer<typeof responseSchema> & { mode: string }

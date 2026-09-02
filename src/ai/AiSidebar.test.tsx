@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { AiSidebar } from './AiSidebar'
 import { AiConversationProvider, type AiSelection } from './AiConversation'
@@ -13,6 +14,7 @@ const reply: AiResponse = {
   proposed_content: null,
   issues: [],
   added_information: [],
+  sources: [],
 }
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -42,6 +44,9 @@ type ConversationProps = React.ComponentProps<typeof AiConversationProvider>
 function renderSidebar(props: Partial<ConversationProps> = {}) {
   const onPendingHandled = vi.fn()
   const view = render(
+    // The panel links to notes -- the class list, and now the notes a cited
+    // answer came from -- so it needs a router in a test as much as in the app.
+    <MemoryRouter>
     <AiConversationProvider
       documentId="doc-1"
       classId="class-1"
@@ -53,7 +58,8 @@ function renderSidebar(props: Partial<ConversationProps> = {}) {
       {...props}
     >
       <AiSidebar />
-    </AiConversationProvider>,
+    </AiConversationProvider>
+    </MemoryRouter>,
   )
   return { ...view, onPendingHandled }
 }
@@ -110,18 +116,20 @@ describe('AiSidebar', () => {
    */
   it('sends one request even with the panel rendered twice', async () => {
     render(
-      <AiConversationProvider
-        documentId="doc-1"
-        classId="class-1"
-        selection={null}
-        pendingMode={{ mode: 'IMPROVE_NOTES', selection }}
-        onPendingHandled={vi.fn()}
-        onApply={vi.fn()}
-        onPreview={vi.fn()}
-      >
-        <AiSidebar />
-        <AiSidebar />
-      </AiConversationProvider>,
+      <MemoryRouter>
+        <AiConversationProvider
+          documentId="doc-1"
+          classId="class-1"
+          selection={null}
+          pendingMode={{ mode: 'IMPROVE_NOTES', selection }}
+          onPendingHandled={vi.fn()}
+          onApply={vi.fn()}
+          onPreview={vi.fn()}
+        >
+          <AiSidebar />
+          <AiSidebar />
+        </AiConversationProvider>
+      </MemoryRouter>,
     )
 
     await screen.findAllByText('Here is a tidier version.')
@@ -150,6 +158,7 @@ describe('AiSidebar', () => {
         },
       ],
       added_information: [],
+  sources: [],
     }
 
     // The prop is a union of sync and async returns, which a bare vi.fn() does

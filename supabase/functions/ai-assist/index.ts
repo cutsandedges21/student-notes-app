@@ -51,6 +51,18 @@ const RESPONSE_SCHEMA = {
       },
     },
     added_information: { type: 'ARRAY', items: { type: 'STRING' } },
+    sources: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          documentId: { type: 'STRING' },
+          title: { type: 'STRING' },
+          className: { type: 'STRING' },
+        },
+        required: ['documentId', 'title'],
+      },
+    },
   },
   required: ['mode', 'response', 'issues', 'added_information'],
 }
