@@ -16,6 +16,16 @@ if (typeof Element !== 'undefined' && !Element.prototype.scrollTo) {
 }
 
 /*
+ * `scrollIntoView` is missing for the same reason and is stubbed for the same
+ * reason: keeping a highlighted row on screen is a real requirement in a list
+ * longer than its box, and a component that does it correctly should not
+ * throw in a test that is asking about something else.
+ */
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+
+/*
  * jsdom has no layout, so it does not implement the CSSOM View methods that
  * turn a point into a node. ProseMirror calls `elementFromPoint` from
  * `posAtCoords` on every mousedown, to work out where a click landed.

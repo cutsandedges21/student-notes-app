@@ -196,6 +196,7 @@ interface DocumentMenubarProps {
   onShowWordCount: () => void
   onEquation: () => void
   onPageSetup: () => void
+  onSearchNotes: () => void
   /** Where the page number sits in the footer, or `off`. */
   pageNumbers: PageNumberPosition
   onPageNumbersChange: (position: PageNumberPosition) => void
@@ -221,6 +222,7 @@ export function DocumentMenubar({
   onShowWordCount,
   onEquation,
   onPageSetup,
+  onSearchNotes,
   pageNumbers,
   onPageNumbersChange,
 }: DocumentMenubarProps) {
@@ -309,6 +311,12 @@ export function DocumentMenubar({
           label: 'Select all',
           shortcut: 'Ctrl+A',
           onSelect: () => chain().selectAll().run(),
+          separatorBefore: true,
+        },
+        {
+          label: 'Search all notes',
+          shortcut: 'Ctrl+Shift+F',
+          onSelect: onSearchNotes,
           separatorBefore: true,
         },
         {

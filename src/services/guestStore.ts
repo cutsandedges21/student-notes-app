@@ -9,6 +9,7 @@ import type {
 } from '../types/database'
 import type { ClassInput } from './classes'
 import type { SaveResult } from './documents'
+import { buildSnippet, rankHits, SEARCH_LIMIT, type SearchHit } from './searchResults'
 
 /**
  * Browser-local storage for people using the app without an account.
@@ -591,4 +592,46 @@ export function guestExportJson(): string {
 /** Suggested filename; dated so repeated exports do not overwrite each other. */
 export function guestExportFilename(): string {
   return `margin-notes-${now().slice(0, 10)}.json`
+}
+
+// ---------------------------------------------------------------------------
+// search
+// ---------------------------------------------------------------------------
+
+/**
+ * Searches guest notes, matching what `searchNotes` does against Postgres.
+ *
+ * Guest notes live in one browser, so this is an array scan rather than a
+ * query -- and at the size localStorage can hold, that is the whole design.
+ * It is here rather than in `search.ts` so the storage keys and row shapes
+ * stay in the one module that knows them.
+ */
+export function guestSearchNotes(query: string): SearchHit[] {
+  const needle = query.toLowerCase()
+  const classes = read<ClassRow>(CLASSES_KEY)
+  const documents = read<DocumentRow>(DOCUMENTS_KEY)
+
+  const hits = [...documents]
+    .sort(byNewestEdit)
+    .filter(
+      (doc) =>
+        doc.title.toLowerCase().includes(needle) ||
+        (doc.content_text ?? '').toLowerCase().includes(needle),
+    )
+    .slice(0, SEARCH_LIMIT)
+    .map((doc) => {
+      const klass = classes.find((row) => row.id === doc.class_id)
+      return {
+        documentId: doc.id,
+        title: doc.title,
+        classId: doc.class_id,
+        className: klass?.name ?? 'Unfiled',
+        classSlug: klass?.slug ?? '',
+        slug: doc.slug,
+        snippet: buildSnippet(doc.content_text ?? '', query),
+        inTitle: doc.title.toLowerCase().includes(needle),
+      }
+    })
+
+  return rankHits(hits)
 }

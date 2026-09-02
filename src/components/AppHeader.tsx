@@ -1,10 +1,14 @@
 import { Link } from 'react-router-dom'
+import { Search } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from './ui/Button'
+import { SearchDialog } from './SearchDialog'
+import { useSearchShortcut } from './useSearchShortcut'
 
 export function AppHeader() {
-  const { profile, session, signOut } = useAuth()
+  const { profile, session, signOut, user } = useAuth()
   const signedIn = Boolean(session)
+  const { searchOpen, openSearch, closeSearch } = useSearchShortcut()
 
   return (
     <header className="border-b border-line bg-surface">
@@ -16,6 +20,17 @@ export function AppHeader() {
         </Link>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={openSearch}
+            title="Search your notes (Ctrl+Shift+F)"
+            aria-label="Search your notes"
+            className="flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <Search size={15} />
+            <span className="hidden sm:inline">Search</span>
+          </button>
+
           {signedIn ? (
             <>
               {profile?.display_name && (
@@ -48,6 +63,12 @@ export function AppHeader() {
           )}
         </div>
       </div>
+
+      <SearchDialog
+        open={searchOpen}
+        userId={user?.id ?? null}
+        onClose={closeSearch}
+      />
     </header>
   )
 }

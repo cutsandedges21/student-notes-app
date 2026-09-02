@@ -35,6 +35,8 @@ import { useComments } from '../comments/useComments'
 import { VersionHistoryPanel } from '../history/VersionHistoryPanel'
 import { useVersionHistory } from '../history/useVersionHistory'
 import { SidePanel } from '../components/SidePanel'
+import { SearchDialog } from '../components/SearchDialog'
+import { useSearchShortcut } from '../components/useSearchShortcut'
 import { markdownToHtml, isInlineSuggestion, escapeHtml } from '../lib/markdown'
 import { aiPreviewKey } from '../editor/aiPreview'
 import {
@@ -197,6 +199,9 @@ export default function EditorPage() {
    * toolbar reach them, and this is the lowest point that renders both.
    */
   const dialogs = useDocumentDialogs(editor)
+  // Search across every note. The app header does not render on this route, so
+  // the editor carries its own door to the same dialog.
+  const { searchOpen, openSearch, closeSearch } = useSearchShortcut()
   const [loaded, setLoaded] = useState(false)
   const [editable, setEditable] = useState(true)
   const [selection, setSelection] = useState<
@@ -1200,6 +1205,7 @@ export default function EditorPage() {
                 onShowWordCount={dialogs.openWordCount}
                 onEquation={dialogs.openEquation}
                 onPageSetup={dialogs.openPageSetup}
+                onSearchNotes={openSearch}
                 onPrint={handlePrint}
                 // Same document; the browser's dialog offers Save as PDF as a
                 // destination, which is what writes the file.
@@ -1424,6 +1430,8 @@ export default function EditorPage() {
         onSubmit={dialogs.submitEquation}
         onClose={dialogs.close}
       />
+
+      <SearchDialog open={searchOpen} userId={userId} onClose={closeSearch} />
 
       <PageSetupDialog
         open={dialogs.open === 'pageSetup'}
