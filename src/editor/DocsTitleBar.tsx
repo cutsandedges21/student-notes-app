@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Star } from 'lucide-react'
+import { Star, MessageSquareText } from 'lucide-react'
 import { AppDocIcon, SparkIcon } from './DocsIcons'
 import { ShareMenu } from './ShareMenu'
 import type { ShareMode } from '../services/sharing'
@@ -13,10 +13,11 @@ import { cn } from '../lib/cn'
  * The title row of the editor chrome: document icon, title, star, menu bar,
  * and the cluster of controls on the right.
  *
- * Two of those controls -- comments and video calls -- have no counterpart in
- * this app. They are rendered because the row is a deliberate reproduction and
- * their absence would be conspicuous, but they carry `aria-disabled` and say
- * so on hover rather than silently doing nothing when clicked.
+ * The comment button carries the count of open threads. That is the whole
+ * reason it is here rather than only in the formatting toolbar: the panel is
+ * closed by default, so a note could hold a conversation and say nothing about
+ * it anywhere on screen. A number in the chrome is what makes an existing
+ * discussion discoverable without opening anything.
  */
 
 interface DocsTitleBarProps {
@@ -36,6 +37,10 @@ interface DocsTitleBarProps {
   menubar: ReactNode
   aiOpen: boolean
   onToggleAi: () => void
+  /** Open threads on this note. Rendered as a badge; hidden at zero. */
+  commentCount?: number
+  /** Absent where commenting is impossible, in which case no button appears. */
+  onOpenComments?: () => void
 }
 
 const STAR_PREFIX = 'margin:starred:'
@@ -85,6 +90,8 @@ export function DocsTitleBar({
   menubar,
   aiOpen,
   onToggleAi,
+  commentCount = 0,
+  onOpenComments,
 }: DocsTitleBarProps) {
   const { profile, session, signOut } = useAuth()
   const navigate = useNavigate()
@@ -206,6 +213,34 @@ export function DocsTitleBar({
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-3 pt-1">
+        {onOpenComments && (
+          <ChromeButton
+            label={
+              commentCount === 0
+                ? 'Comments'
+                : `Comments (${commentCount} open)`
+            }
+            onClick={onOpenComments}
+            className="relative"
+          >
+            <MessageSquareText size={20} strokeWidth={1.8} />
+            {commentCount > 0 && (
+              /* Marked presentational: the count is already in the button's
+                 accessible name, and announcing it twice reads as
+                 "Comments 3 open, 3". */
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1',
+                  'bg-docs-active-icon font-ui text-[10px] font-medium leading-none text-white',
+                )}
+              >
+                {commentCount > 9 ? '9+' : commentCount}
+              </span>
+            )}
+          </ChromeButton>
+        )}
+
         <ShareMenu documentId={documentId} onModeChange={onShareModeChange} />
 
         {/* The panel is permanently docked from `lg` up, so no trigger is
@@ -221,13 +256,13 @@ export function DocsTitleBar({
 
         <Link
           to="/upgrade"
-          title="See plans"
+          title="What Margin does, and what is still being built"
           className={cn(
             'hidden h-9 shrink-0 items-center rounded-full bg-docs-chip px-5 lg:flex',
             'font-ui text-sm font-medium text-docs-chip-text transition-colors hover:bg-docs-chip-hover',
           )}
         >
-          Upgrade
+          Roadmap
         </Link>
 
         <div ref={accountRef} className="relative">

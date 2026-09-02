@@ -868,6 +868,32 @@ export default function EditorPage() {
     (view) => view.thread.resolvedAt === null,
   ).length
 
+  /*
+   * Starting a comment, from any of the three places that offer it: the
+   * selection bar, the formatting toolbar, and the title bar's button.
+   *
+   * Undefined where a comment cannot be stored and addressed to somebody --
+   * signed out -- and every caller then hides its own control rather than
+   * rendering one that does nothing.
+   *
+   * The order matters. Anchoring has to happen before the panel opens, because
+   * opening it moves focus and collapses the very selection the comment is
+   * about.
+   */
+  const startComment = userId
+    ? () => {
+        comments.startDraft()
+        setPanelTab('comments')
+        setSidebarOpen(true)
+      }
+    : undefined
+
+  /** Shows the existing discussion without starting a new thread. */
+  const openComments = () => {
+    setPanelTab('comments')
+    setSidebarOpen(true)
+  }
+
   /**
    * Keeps what is on screen and saves it over the newer stored version.
    *
@@ -936,6 +962,10 @@ export default function EditorPage() {
             }
             aiOpen={sidebarOpen}
             onToggleAi={() => setSidebarOpen((open) => !open)}
+            commentCount={openCommentCount}
+            // Reading the discussion needs no permission to add to it; the
+            // button is hidden only where there is no discussion to read.
+            onOpenComments={comments.threads.length > 0 ? openComments : startComment}
             menubar={
               <DocumentMenubar
                 editor={editor}
@@ -1009,19 +1039,7 @@ export default function EditorPage() {
           fullScreen={fullScreen}
           onGeometryChange={setGeometry}
           onPrint={handlePrint}
-          // Only offered where a comment can actually be stored and addressed
-          // to somebody: signed in, against a real note.
-          onAddComment={
-            userId
-              ? () => {
-                  // Anchor first: opening the panel moves focus and collapses
-                  // the selection this comment is about.
-                  comments.startDraft()
-                  setPanelTab('comments')
-                  setSidebarOpen(true)
-                }
-              : undefined
-          }
+          onAddComment={startComment}
           canAddComment={comments.canComment}
           header={doc.header as JSONContent}
           footer={doc.footer as JSONContent}
@@ -1204,6 +1222,7 @@ export default function EditorPage() {
           setSidebarOpen(true)
           setPendingMode({ mode, selection })
         }}
+        onComment={startComment}
       />
     </div>
   )
