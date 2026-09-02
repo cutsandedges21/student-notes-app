@@ -18,32 +18,44 @@ import { EVAL_CASES } from './cases.ts'
  * 1. Run the evals against the new prompt:
  *      GEMINI_API_KEY=... npx vitest run supabase/functions/ai-assist/evals
  * 2. Fix whatever regressed, or add a case if the change was deliberate.
- * 3. Move REVIEWED_AT_PROMPT_VERSION to match, in the same commit.
+ * 3. Move EVALS_WRITTEN_FOR_PROMPT_VERSION to match, in the same commit.
  *
- * Bumping this without step 1 is lying to the next person, who will read a
- * green suite as evidence the assistant still refuses injected instructions.
+ * Skipping step 1 while moving the constant is lying to the next person, who
+ * will read a green suite as evidence the assistant still refuses injected
+ * instructions.
  */
 
 /**
- * The prompt version the cases in `cases.ts` were last executed against.
+ * The prompt version the cases in `cases.ts` were written against.
  *
- * 1.3.0 — the tools and citation rules. NOT yet executed: there is no Gemini
- * key in this environment, so the cases have been written and never run. This
- * is recorded as the version they are written for, and the first person with a
- * key should run them and either confirm this line or fix what they find.
+ * Named for what it can honestly assert. It was `REVIEWED_AT` for one commit,
+ * which claimed something this file cannot check and which was not true: there
+ * is no Gemini key in this environment, so the cases have never been executed
+ * at any version. A constant that quietly overstates itself is exactly the
+ * kind of thing the rest of this programme has been removing.
+ *
+ * What it does enforce is still the useful half: the prompt cannot move
+ * without somebody opening this file, and the cases cannot silently fall
+ * behind a behaviour that was added after them.
+ *
+ * 1.4.0 — tools, citations, and offering to create a note.
+ *
+ * **Never executed.** The first person with a key should run them, then record
+ * the result here.
  */
-const REVIEWED_AT_PROMPT_VERSION = '1.3.0'
+const EVALS_WRITTEN_FOR_PROMPT_VERSION = '1.4.0'
 
 describe('eval coverage', () => {
-  it('has been reviewed against the prompt that ships', () => {
+  it('keeps pace with the prompt that ships', () => {
     expect(
       AI_PROMPT_VERSION,
       [
-        `The prompt is at ${AI_PROMPT_VERSION}; the evals were last reviewed at`,
-        `${REVIEWED_AT_PROMPT_VERSION}. Run them against a real key, fix or accept`,
-        'what changed, then move REVIEWED_AT_PROMPT_VERSION in this file.',
+        `The prompt is at ${AI_PROMPT_VERSION}; the eval cases were written for`,
+        `${EVALS_WRITTEN_FOR_PROMPT_VERSION}. Add or adjust cases for whatever the`,
+        'prompt change was, run them against a real key, then move',
+        'EVALS_WRITTEN_FOR_PROMPT_VERSION in this file.',
       ].join(' '),
-    ).toBe(REVIEWED_AT_PROMPT_VERSION)
+    ).toBe(EVALS_WRITTEN_FOR_PROMPT_VERSION)
   })
 
   /*
@@ -54,7 +66,9 @@ describe('eval coverage', () => {
   it('still covers every behaviour worth guarding', () => {
     const prefixes = EVAL_CASES.map((testCase) => testCase.id.split('/')[0])
 
-    expect(new Set(prefixes)).toEqual(new Set(['injection', 'fabrication', 'mode']))
+    expect(new Set(prefixes)).toEqual(
+      new Set(['injection', 'fabrication', 'mode', 'actions']),
+    )
   })
 
   it('gives every case a stable id and a stated intent', () => {

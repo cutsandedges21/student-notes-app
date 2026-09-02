@@ -1,6 +1,6 @@
-import { FileText } from 'lucide-react'
+import { FilePlus2, FileText } from 'lucide-react'
 import { Button } from '../components/ui/Button'
-import type { AiIssue, AiResponse, AiSource } from '../types/ai'
+import type { AiIssue, AiProposedAction, AiResponse, AiSource } from '../types/ai'
 
 /**
  * Renders a proposed edit. The student decides; nothing is ever applied on
@@ -81,6 +81,78 @@ function Sources({
   )
 }
 
+/**
+ * Something the assistant offered to make.
+ *
+ * An offer, not a result: nothing has happened until this button is pressed.
+ * The tool layer on the server is read-only precisely so that anything which
+ * creates the student's work has to come through a card like this one.
+ *
+ * The content is shown before it is made rather than after. A note that
+ * appears in a class list unannounced is something to discover and delete;
+ * one that is read first is one that was chosen.
+ */
+function ProposedActions({
+  actions,
+  onRun,
+  running,
+  historical,
+}: {
+  actions: AiProposedAction[]
+  onRun?: (action: AiProposedAction) => void
+  running?: AiProposedAction | null
+  historical?: boolean
+}) {
+  if (actions.length === 0) return null
+
+  return (
+    <div className="mt-3 space-y-3">
+      {actions.map((action) => {
+        const busy = running?.title === action.title
+        return (
+          <div key={action.title} className="rounded border border-accent/40 bg-accent/5 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-ink-faint">
+              <FilePlus2 size={13} />
+              New note
+            </p>
+            <p className="mt-1.5 text-sm font-medium text-ink">{action.title}</p>
+            {action.reason && (
+              <p className="mt-0.5 text-sm text-ink-muted">{action.reason}</p>
+            )}
+
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-ink-muted hover:text-ink">
+                Read it first
+              </summary>
+              <p className="mt-1.5 max-h-56 overflow-y-auto whitespace-pre-wrap border-l-2 border-line pl-2 text-sm text-ink-muted">
+                {action.content}
+              </p>
+            </details>
+
+            {historical ? (
+              <p className="mt-3 text-xs text-ink-faint">
+                From an earlier conversation. Ask again to make it.
+              </p>
+            ) : (
+              <div className="mt-3">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={busy}
+                  onClick={onRun ? () => onRun(action) : undefined}
+                  disabled={!onRun || busy}
+                >
+                  Create this note
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 interface IssueListProps {
   issues: AiIssue[]
   onFix: (issue: AiIssue) => void
@@ -156,6 +228,10 @@ interface SuggestionCardProps {
    * guessed location. So a historical card shows and offers nothing to apply.
    */
   historical?: boolean
+  /** Carries out an offer. Absent where nothing can be created. */
+  onRunAction?: (action: AiProposedAction) => void
+  /** The offer currently being carried out, so its button can show progress. */
+  runningAction?: AiProposedAction | null
 }
 
 export function SuggestionCard({
@@ -167,6 +243,8 @@ export function SuggestionCard({
   historical = false,
   onFixIssue,
   onDismissIssue,
+  onRunAction,
+  runningAction,
 }: SuggestionCardProps) {
   // A historical card has no anchor to apply against, so it has no proposal
   // to offer -- the text is still shown, just not as something to accept.
@@ -221,6 +299,12 @@ export function SuggestionCard({
       )}
 
       <AddedInformation items={result.added_information} />
+      <ProposedActions
+        actions={result.proposed_actions}
+        onRun={onRunAction}
+        running={runningAction}
+        historical={historical}
+      />
       <Sources sources={result.sources} onOpen={onOpenSource} />
     </div>
   )

@@ -15,6 +15,7 @@ const reply: AiResponse = {
   issues: [],
   added_information: [],
   sources: [],
+  proposed_actions: [],
 }
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -159,6 +160,7 @@ describe('AiSidebar', () => {
       ],
       added_information: [],
   sources: [],
+  proposed_actions: [],
     }
 
     // The prop is a union of sync and async returns, which a bare vi.fn() does

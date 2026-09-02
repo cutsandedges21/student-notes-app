@@ -9,6 +9,7 @@ import { cn } from '../lib/cn'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useOpenSource } from './useOpenSource'
+import { useProposedActions } from './useProposedActions'
 
 export type { AiSelection } from './AiConversation'
 
@@ -148,6 +149,7 @@ function MenuView({
 export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
   const { session } = useAuth()
   const { openSource, sourceError, clearSourceError } = useOpenSource()
+  const actions = useProposedActions()
   const {
     turns,
     busy,
@@ -160,6 +162,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
     dismissTurn,
     apply,
     applyIssueFix,
+    classId,
   } = useAiConversation()
 
   const [question, setQuestion] = useState('')
@@ -302,6 +305,8 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
                 onDismissIssue={() => undefined}
                 onOpenSource={openSource}
                 historical={turn.historical}
+                onRunAction={(action) => actions.run(action, classId)}
+                runningAction={actions.running}
               />
             ) : (
               <div key={turn.id} className="flex gap-2">
@@ -326,6 +331,49 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
         {error && (
           <p role="alert" className="mt-4 text-sm text-red-600">
             {error}
+          </p>
+        )}
+
+        {/* The note the assistant just made, offered as somewhere to go
+            rather than navigated to. Being moved out of a conversation you
+            were in the middle of is worse than a link. */}
+        {actions.created && (
+          <div
+            role="status"
+            className="mt-4 rounded border border-accent/40 bg-accent/5 p-3 text-sm"
+          >
+            <p className="text-ink">
+              Created <span className="font-medium">{actions.created.title}</span>.
+            </p>
+            <div className="mt-2 flex items-center gap-3">
+              <Link
+                to={actions.created.href}
+                onClick={actions.dismissCreated}
+                className="font-medium text-accent hover:underline"
+              >
+                Open it
+              </Link>
+              <button
+                type="button"
+                onClick={actions.dismissCreated}
+                className="text-ink-muted hover:underline"
+              >
+                Stay here
+              </button>
+            </div>
+          </div>
+        )}
+
+        {actions.error && (
+          <p role="alert" className="mt-4 flex items-start gap-2 text-sm text-red-600">
+            <span className="flex-1">{actions.error}</span>
+            <button
+              type="button"
+              onClick={actions.dismissError}
+              className="shrink-0 underline underline-offset-2"
+            >
+              Dismiss
+            </button>
           </p>
         )}
 

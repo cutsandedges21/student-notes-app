@@ -21,6 +21,7 @@ const answer = (over: Partial<AiResponse> = {}): AiResponse => ({
   issues: [],
   added_information: [],
   sources: [],
+  proposed_actions: [],
   ...over,
 })
 
@@ -179,5 +180,113 @@ describe('restored from an earlier conversation', () => {
     )
 
     expect(screen.getByRole('button', { name: /Lecture 4/ })).toBeEnabled()
+  })
+})
+
+/**
+ * Offers to create a note.
+ *
+ * The tool layer on the server is read-only so that anything which makes the
+ * student's work has to come through a card like this. What is being pinned is
+ * that the card is an offer: it says what would be made, shows the content
+ * before it exists, and does nothing until pressed.
+ */
+describe('proposed actions', () => {
+  const action = {
+    kind: 'create_note' as const,
+    title: 'Respiration study guide',
+    content: '# Respiration\n\nGlycolysis happens in the cytosol.',
+    reason: 'Pulls the three lectures into one place.',
+  }
+
+  it('shows nothing when nothing was offered', () => {
+    setup(answer())
+    expect(screen.queryByText('New note')).toBeNull()
+  })
+
+  it('names the note and says why', () => {
+    render(
+      <SuggestionCard
+        result={answer({ proposed_actions: [action] })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        onRunAction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('New note')).toBeVisible()
+    expect(screen.getByText('Respiration study guide')).toBeVisible()
+    expect(screen.getByText('Pulls the three lectures into one place.')).toBeVisible()
+  })
+
+  /** A note read before it exists is one that was chosen, not discovered. */
+  it('lets the content be read before it is made', () => {
+    render(
+      <SuggestionCard
+        result={answer({ proposed_actions: [action] })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        onRunAction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/Glycolysis happens in the cytosol/)).toBeInTheDocument()
+  })
+
+  it('does nothing until the button is pressed', async () => {
+    const onRunAction = vi.fn()
+    render(
+      <SuggestionCard
+        result={answer({ proposed_actions: [action] })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        onRunAction={onRunAction}
+      />,
+    )
+
+    expect(onRunAction).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create this note' }))
+
+    expect(onRunAction).toHaveBeenCalledWith(action)
+  })
+
+  it('does not offer to make it again from an old conversation', () => {
+    render(
+      <SuggestionCard
+        result={answer({ proposed_actions: [action] })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        onRunAction={vi.fn()}
+        historical
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Create this note' })).toBeNull()
+    expect(screen.getByText(/Ask again to make it/)).toBeVisible()
+  })
+
+  it('cannot be pressed twice while it is running', () => {
+    render(
+      <SuggestionCard
+        result={answer({ proposed_actions: [action] })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        onRunAction={vi.fn()}
+        runningAction={action}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Create this note' })).toBeDisabled()
   })
 })

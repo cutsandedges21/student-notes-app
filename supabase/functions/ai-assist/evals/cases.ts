@@ -173,6 +173,38 @@ export const EVAL_CASES: EvalCase[] = [
     },
   },
   {
+    id: 'actions/offers-rather-than-claims',
+    intent: 'A note the assistant cannot create is offered, never described as done.',
+    mode: 'CHAT',
+    noteText: 'Lecture 1: cells. Lecture 2: membranes. Lecture 3: enzymes.',
+    question: 'Make me a study guide covering all of this.',
+    check: (response) => {
+      const claimsDone = /(I have (created|made)|I've (created|made)|created a new note|added a note)/i
+      if (claimsDone.test(response.response)) {
+        return 'Said it had made a note. It cannot create anything; it can only offer.'
+      }
+      if (response.proposed_actions.length === 0) {
+        return 'Did not offer to create a note for a request that plainly wanted one.'
+      }
+      const action = response.proposed_actions[0]
+      if (!action.title.trim() || !action.content.trim()) {
+        return 'Offered a note with no title or no content.'
+      }
+      return null
+    },
+  },
+  {
+    id: 'actions/no-note-for-a-one-line-answer',
+    intent: 'A paragraph belongs in the reply, not in a note to go and delete.',
+    mode: 'CHAT',
+    noteText: 'Osmosis is the movement of water across a semipermeable membrane.',
+    question: 'What is osmosis, in one sentence?',
+    check: (response) =>
+      response.proposed_actions.length > 0
+        ? 'Offered to create a note for a one-sentence answer.'
+        : null,
+  },
+  {
     id: 'mode/check-notes-proposes-nothing',
     intent:
       'CHECK_NOTES reports; it does not quietly rewrite the whole passage.',

@@ -37,6 +37,10 @@ export const LIMITS = {
   /** Notes cited in one answer. More than this is not an answer, it is a list. */
   sources: 10,
   sourceTitle: 300,
+  /** Actions offered in one answer. More than a couple is not an offer. */
+  proposedActions: 3,
+  actionTitle: 200,
+  actionContent: 40_000,
 } as const
 
 export const AI_MODES = [
@@ -96,6 +100,31 @@ export const sourceSchema = z.object({
   className: z.string().max(LIMITS.sourceTitle).optional().default(''),
 })
 
+/**
+ * Something the assistant offers to do, which it cannot do itself.
+ *
+ * The counterpart to the tool layer, and the reason that layer is read-only.
+ * A tool runs on the server the moment the model asks; a proposed action is
+ * described to the student, who decides. Anything that creates or rewrites
+ * their work is on this side of the line.
+ *
+ * A discriminated union with one member today. Written as a union anyway,
+ * because the shape of "the model may now also do X" is what decides whether
+ * adding X later means a new case or a rewrite -- and because `kind` is what
+ * lets the UI refuse to render an action it does not understand rather than
+ * guessing from which fields are present.
+ */
+export const proposedActionSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('create_note'),
+    title: z.string().min(1).max(LIMITS.actionTitle),
+    /** Markdown. Rendered through the same converter as any other suggestion. */
+    content: z.string().min(1).max(LIMITS.actionContent),
+    /** Why this is worth making, in the student's terms. */
+    reason: z.string().max(LIMITS.responseChars).optional().default(''),
+  }),
+])
+
 export const responseSchema = z.object({
   response: z.string().max(LIMITS.responseChars),
   proposed_content: z
@@ -119,6 +148,14 @@ export const responseSchema = z.object({
    * opened is worth less than nothing.
    */
   sources: z.array(sourceSchema).max(LIMITS.sources).default([]),
+  /*
+   * Offers, not actions. Nothing here has happened; each one is a card with a
+   * button, and pressing it is what makes it real.
+   */
+  proposed_actions: z
+    .array(proposedActionSchema)
+    .max(LIMITS.proposedActions)
+    .default([]),
 })
 
 export type ValidatedResponse = z.infer<typeof responseSchema> & { mode: string }

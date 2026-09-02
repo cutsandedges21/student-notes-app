@@ -51,6 +51,19 @@ const RESPONSE_SCHEMA = {
       },
     },
     added_information: { type: 'ARRAY', items: { type: 'STRING' } },
+    proposed_actions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          kind: { type: 'STRING', enum: ['create_note'] },
+          title: { type: 'STRING' },
+          content: { type: 'STRING' },
+          reason: { type: 'STRING' },
+        },
+        required: ['kind', 'title', 'content'],
+      },
+    },
     sources: {
       type: 'ARRAY',
       items: {

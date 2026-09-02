@@ -63,6 +63,21 @@ export interface AiResponse {
    * be checked against the note it came from.
    */
   sources: AiSource[]
+  /**
+   * Things the assistant offers to do, which it cannot do on its own.
+   *
+   * Nothing here has happened. Each is a card with a button, and pressing it
+   * is what makes it real -- the tool layer on the server is read-only, and
+   * anything that creates or changes the student's work goes through them.
+   */
+  proposed_actions: AiProposedAction[]
+}
+
+export type AiProposedAction = {
+  kind: 'create_note'
+  title: string
+  content: string
+  reason: string
 }
 
 export interface AiSource {

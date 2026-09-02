@@ -166,6 +166,7 @@ describe('appendTurn', () => {
       issues: [],
       added_information: [],
       sources: [],
+      proposed_actions: [],
     }
 
     await appendTurn(

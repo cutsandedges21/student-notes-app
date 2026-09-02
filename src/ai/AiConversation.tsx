@@ -104,6 +104,8 @@ export interface AiConversation {
   applyIssueFix: (issue: AiIssue, scope?: SuggestionTarget) => void
   /** The live selection, so a surface can say whether actions have something to work on. */
   selection: AiSelection | null
+  /** The class the open note belongs to, so an offered note is filed with it. */
+  classId: string
 }
 
 const Context = createContext<AiConversation | null>(null)
@@ -501,6 +503,7 @@ export function AiConversationProvider({
       apply,
       applyIssueFix,
       selection,
+      classId,
     }),
     [
       turns,
@@ -517,6 +520,7 @@ export function AiConversationProvider({
       selection,
       userId,
       documentId,
+      classId,
     ],
   )
 
