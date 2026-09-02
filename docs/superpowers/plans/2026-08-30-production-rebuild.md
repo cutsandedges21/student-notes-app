@@ -149,20 +149,103 @@ untestable in jsdom now runs in a real browser.
    91-statement equivalence check is a structural proof, not an execution one.
    `npm run db:reset` is the real test and has not been run.
 
+**Re-verified 2026-09-01, both still true.** `supabase projects list` returns
+`gkbloibtkszaowxcnhzr`, `byxnkwxmpindjqvdyalf`, `apkysupvpahnkibjfrin` and
+`xomxqoqcyxrilrhvpole` — `kttsiipsrrcfanrlkevj` is not among them. Docker is
+installed and the daemon is still down.
+
+**Decision (owner, 2026-09-01): leave it.** Schema reaches the database by pasting
+`supabase/.generated/apply-all.sql` into the Supabase dashboard, not by
+`db push`. That works, and it is the workflow that has in fact been shipping
+schema all along. The cost is accepted and recorded here rather than hidden:
+nothing verifies that the live schema matches the migration history, so drift
+will go undetected until something fails at runtime — which is exactly how
+`redeem_share_token` stayed broken through a green test suite.
+
+The standing obligation that follows: **any agent adding a migration must run
+`npm run db:bundle` and leave the regenerated bundle in the tree.** A migration
+that is not in the bundle never reaches the database.
+
 **CSP ships report-only, deliberately.** Enforcing it without driving the print
 path through a browser would ship an unverified change to printing — the kind
 that fails at a printer where nobody can diagnose it.
 `docs/security-headers.md` records what must happen to flip it, and the
 Playwright suite landing in this phase is what makes that possible.
 
-### Phase 2 — Collaboration + comments `TODO`
-Collaboration first, comments second: comment anchors must survive concurrent edits.
-Architecture decision pending investigation — see Decisions below.
+### Phase 2 — Collaboration + comments `DONE`
 
-### Phase 3 — Editor parity `TODO`
-Tables, equations, super/subscript, images + Supabase Storage, find & replace panel,
+Collaboration first, comments second, as planned: comment anchors had to survive
+concurrent edits before they were worth building.
+
+**503 unit tests** (from 290), 47 files. `tsc` clean, 9 lint warnings unchanged,
+build green.
+
+| Item | Outcome | Commit |
+| --- | --- | --- |
+| Transport | Yjs over Supabase Realtime — one private channel per document, authorised by RLS on `realtime.messages` so a channel cannot be joined by guessing a document id. Hocuspocus stayed ruled out; there is no persistent WebSocket server on Vercel | `183ab15` |
+| Convergence | `YjsProvider` with `y-protocols` awareness; durable Yjs storage behind it | `67654d8`, `183ab15` |
+| Both editors | Collaboration wired through the main and shared editors, closing the seam where one was CRDT-backed and the other was not | `7f7b8c6` |
+| Presence | Awareness-backed `PresenceBar`; stable per-user cursor colour, one peer per tab. Departure is announced before the handler detaches, so a leaver does not linger | `c8b5362` |
+| Comments | Threads anchored to passages, not raw positions — positions do not survive concurrent edits | `ba366f7` |
+| Sharing | A shared note is the same note in the same editor, not a second document; `rotate_share_token` for link rotation; grant revocation separated from credential reset | `727ba13`, `45dd316`, `fc3c6ec` |
+
+`redeem_share_token` was ambiguous and had **never once succeeded** — found and fixed
+in `fc3c6ec`. Worth recording: sharing was covered by passing tests the whole time it
+was broken, because the tests exercised the client and the defect was in SQL.
+
+### Phase 3 — Editor parity `IN PROGRESS`
+
+Tables ship already (`TableKit`, resizable, and the pagination engine breaks them
+between rows). Remaining: equations, super/subscript, images + Supabase Storage,
 page setup, ruler/tabs, lists, headers/footers, version-history UI, import/export,
-real dialog system, document management, global search.
+document management, global search.
+
+**Wave 1 `DONE` — α (product UI integrity) and β (editor schema).**
+
+**536 unit tests** (from 503), 51 files. `tsc` clean, 9 lint warnings unchanged,
+build green, and zero live `window.prompt`/`alert`/`confirm` calls left in `src/`.
+
+The three sub-agents dispatched for this wave all died on the same account rate
+limit before doing any work, so the wave was executed directly. β had got as far
+as installing its dependencies, and those installs were kept — they were correct
+and version-matched. γ (version history) did not start and is deferred to Wave 2.
+
+| ID | Fix |
+| --- | --- |
+| α1 | `LinkDialog` and `FindReplacePanel` were complete, documented, tested — and rendered by **nothing**. Both are now wired into the menubar and the toolbar |
+| α2 | `ImageDialog` written, with an alt-text field. Every image the app had ever inserted was unlabelled, because a `window.prompt` has nowhere to ask |
+| α3 | `WordCountDialog` replaces a blocking `window.alert`, and adds the selection count an alert had no room for |
+| α4 | Link, image, find and word count are opened from one place (`useDocumentDialogs`) instead of being implemented separately in each surface |
+| α5 | UpgradePage: four of the paid tier's five features were false. Claims rewritten as Today/Planned; `FREE_DOCUMENT_LIMIT` deleted |
+| β1 | Superscript and subscript registered as shared schema |
+| β2 | Equations via `@tiptap/extension-mathematics` + KaTeX; LaTeX stored in the node's `latex` attribute, never rendered HTML |
+| β3 | `throwOnError: false` — a formula is invalid for most of the time it is being typed, and KaTeX's default throw happens inside a node view |
+
+**Two defects found by the work, neither in the audit:**
+
+1. **`Ctrl+K` was advertised in the menubar and in the shortcut reference, and bound
+   to nothing.** Neither the app nor Tiptap's Link extension registers it, so pressing
+   it only ever opened the browser's own search bar. Implemented rather than deleted,
+   since it is the binding people expect. `Ctrl+H` added for find and replace.
+2. **Equations were invisible to the AI.** Math nodes are atoms with no text content,
+   so `extractPlainText` — which produces the `content_text` the assistant reads —
+   walked straight past them. A note whose point was a derivation would have reached
+   the model as prose wrapped around a hole. Caught by a test written for it.
+
+**Also fixed:** `collab/encoding.test.ts` timed out under full parallel runs. Not a
+regression — `toEqual` on a 400,000-element `Uint8Array` builds a diff it never
+prints, taking 23s against a 15s limit while the encoding under test takes
+milliseconds. The array size is the point of that test, so the assertion changed
+instead of the input.
+
+**Wave 2:** γ version history (list, preview, collaboration-safe restore), images +
+Supabase Storage upload, page setup, ruler/tabs, import/export, document management,
+global search, and the toolbar UI for β's commands.
+
+Toolbar buttons for superscript, subscript and equations are **not yet wired** — β
+deliberately landed schema and commands only, so that α could own the toolbar without
+a conflict. The commands to wire are `toggleSuperscript`, `toggleSubscript`,
+`insertInlineMath({ latex })` and `insertBlockMath({ latex })`.
 
 ### Phase 4 — Mobile `TODO`
 Reflow mode below a deliberate breakpoint. No half-scale Letter page on a phone.
@@ -187,6 +270,10 @@ honesty.
 | 4 | Wave 1 agents get strictly disjoint file ownership; the orchestrator refactor runs alone | Avoids merge-conflict chaos in `EditorPage.tsx` (§55 of the brief) |
 | 5 | Pricing claims: fix the claims, don't build billing | The page already states no payment is taken. Honest copy is the correct fix; server-enforced limits would be building a paywall the product doesn't have |
 | 6 | Collaboration transport: pending investigation, but Hocuspocus is likely ruled out | Deployment is Vercel (serverless) + Supabase. No persistent WebSocket server exists. Yjs + Supabase Realtime is the probable answer — to be confirmed by the collaboration agent, not assumed here |
+| 6a | **Resolved:** Yjs over Supabase Realtime, private channel per document, authorised by RLS on `realtime.messages` | Confirmed by the collaboration agent against the real deployment constraints. Hocuspocus ruled out as predicted — nowhere to run it |
+| 7 | Schema keeps reaching the database through the pasted SQL bundle; CLI access is not pursued | Owner's call, 2026-09-01. The access problem is outside the codebase, and the bundle workflow already works. Recorded as accepted drift risk above, not as a solved problem |
+| 8 | Phase 3 before Phases 4 and 5 | Owner's call, 2026-09-01. Editor parity is the highest student value left, and it is what makes the UpgradePage claims honest rather than merely reworded |
+| 9 | The audit that opened this programme is treated as a stale diagnostic, not a spec | Measured against the tree on 2026-09-01: it reports 159 tests against an actual 503, and its lead defect (AI apply replacing the whole document) was fixed in `10ad704`. Every claim is re-verified in code before an agent acts on it |
 
 ---
 
