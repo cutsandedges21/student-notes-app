@@ -12,6 +12,7 @@ import { LinkDialog } from '../editor/LinkDialog'
 import { ImageDialog } from '../editor/ImageDialog'
 import { FindReplacePanel } from '../editor/FindReplacePanel'
 import { WordCountDialog } from '../editor/WordCountDialog'
+import { EquationDialog } from '../editor/EquationDialog'
 import { useDocumentDialogs } from '../editor/useDocumentDialogs'
 import { DocsTitleBar } from '../editor/DocsTitleBar'
 import { SelectionToolbar } from '../editor/SelectionToolbar'
@@ -957,6 +958,7 @@ export default function EditorPage() {
                 onInsertImage={dialogs.openImage}
                 onFind={dialogs.toggleFind}
                 onShowWordCount={dialogs.openWordCount}
+                onEquation={dialogs.openEquation}
                 onPrint={handlePrint}
                 // Same document; the browser's dialog offers Save as PDF as a
                 // destination, which is what writes the file.
@@ -997,6 +999,7 @@ export default function EditorPage() {
           onEditLink={dialogs.openLink}
           onInsertImage={dialogs.openImage}
           onFind={dialogs.toggleFind}
+          onEquation={dialogs.openEquation}
           onSelectionChange={handleSelectionChange}
           showRuler={showRuler}
           compact={compact}
@@ -1172,6 +1175,15 @@ export default function EditorPage() {
         open={dialogs.open === 'wordCount'}
         document={dialogs.documentCounts}
         selection={dialogs.selectionCounts}
+        onClose={dialogs.close}
+      />
+
+      <EquationDialog
+        open={dialogs.open === 'equation'}
+        initialLatex={dialogs.equationTarget?.latex ?? ''}
+        initialDisplay={dialogs.equationTarget?.display ?? false}
+        editing={dialogs.equationTarget !== null}
+        onSubmit={dialogs.submitEquation}
         onClose={dialogs.close}
       />
 

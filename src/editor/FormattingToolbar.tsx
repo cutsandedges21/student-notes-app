@@ -7,6 +7,7 @@ import {
   Printer, Minus, Plus, SpellCheck, PaintRoller, Search, Undo2, Redo2,
   MessageSquarePlus, ListIndentIncrease, ListIndentDecrease,
   ChevronUp, ChevronDown, Table as TableIcon,
+  Superscript as SuperscriptIcon, Subscript as SubscriptIcon, Sigma,
 } from 'lucide-react'
 import { cn } from '../lib/cn'
 import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
@@ -49,6 +50,8 @@ interface FormattingToolbarProps {
   onInsertImage?: () => void
   /** Toggles the find-and-replace panel. */
   onFind?: () => void
+  /** Opens the equation dialog, on the selected formula if there is one. */
+  onEquation?: () => void
 }
 
 /**
@@ -215,6 +218,7 @@ export function FormattingToolbar({
   onEditLink,
   onInsertImage,
   onFind,
+  onEquation,
 }: FormattingToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const handleKeyDown = useRovingToolbar(containerRef)
@@ -270,6 +274,8 @@ export function FormattingToolbar({
         isItalic: instance.isActive('italic'),
         isUnderline: instance.isActive('underline'),
         isStrike: instance.isActive('strike'),
+        isSuperscript: instance.isActive('superscript'),
+        isSubscript: instance.isActive('subscript'),
         isLink: instance.isActive('link'),
         isBulletList: instance.isActive('bulletList'),
         isOrderedList: instance.isActive('orderedList'),
@@ -572,6 +578,21 @@ export function FormattingToolbar({
           active={state.isStrike}
           onClick={() => editor.chain().focus().toggleStrike().run()}
         />
+        {/* Next to strikethrough rather than beside the equation button:
+            x² and H₂O are text a student types mid-sentence, not maths they
+            step out of the sentence to write. */}
+        <ToolButton
+          label="Superscript"
+          icon={SuperscriptIcon}
+          active={state.isSuperscript}
+          onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        />
+        <ToolButton
+          label="Subscript"
+          icon={SubscriptIcon}
+          active={state.isSubscript}
+          onClick={() => editor.chain().focus().toggleSubscript().run()}
+        />
 
         <ToolbarDropdown
           label="Text colour"
@@ -637,6 +658,9 @@ export function FormattingToolbar({
         )}
         {onInsertImage && (
           <ToolButton label="Insert image" icon={ImageIcon} onClick={onInsertImage} />
+        )}
+        {onEquation && (
+          <ToolButton label="Insert equation" icon={Sigma} onClick={onEquation} />
         )}
 
         {/*

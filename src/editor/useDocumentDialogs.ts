@@ -17,7 +17,31 @@ import { countText, type Counts } from './wordCount'
  * the lowest point in the tree that can serve them both.
  */
 
-export type DialogName = 'link' | 'image' | 'find' | 'wordCount'
+export type DialogName = 'link' | 'image' | 'find' | 'wordCount' | 'equation'
+
+/** The equation under the caret, when there is one. */
+export interface EquationTarget {
+  latex: string
+  display: boolean
+}
+
+/**
+ * Reads a selected equation, if the selection is one.
+ *
+ * Tiptap's math nodes are atoms, so clicking one selects the whole node rather
+ * than placing a caret inside it -- which is what makes "select the formula,
+ * press the equation button" a workable way to edit one.
+ */
+function selectedEquation(editor: Editor): EquationTarget | null {
+  const node = (editor.state.selection as { node?: { type: { name: string }; attrs: Record<string, unknown> } }).node
+  if (!node) return null
+  if (node.type.name !== 'inlineMath' && node.type.name !== 'blockMath') return null
+
+  return {
+    latex: typeof node.attrs.latex === 'string' ? node.attrs.latex : '',
+    display: node.type.name === 'blockMath',
+  }
+}
 
 export interface DocumentDialogs {
   open: DialogName | null
@@ -31,6 +55,11 @@ export interface DocumentDialogs {
   /** Find is a toggle: the same control closes the panel it opened. */
   toggleFind: () => void
   openWordCount: () => void
+  /** Opens on the selected equation when there is one, empty otherwise. */
+  openEquation: () => void
+  /** Non-null while the equation dialog is editing rather than inserting. */
+  equationTarget: EquationTarget | null
+  submitEquation: (equation: { latex: string; display: boolean }) => void
   close: () => void
   submitLink: (href: string) => void
   removeLink: () => void
@@ -42,6 +71,7 @@ const EMPTY: Counts = { words: 0, characters: 0, charactersNoSpaces: 0 }
 export function useDocumentDialogs(editor: Editor | null): DocumentDialogs {
   const [open, setOpen] = useState<DialogName | null>(null)
   const [linkHref, setLinkHref] = useState('')
+  const [equationTarget, setEquationTarget] = useState<EquationTarget | null>(null)
 
   /*
    * Counts are read when the dialog opens rather than tracked as state. The
@@ -95,6 +125,44 @@ export function useDocumentDialogs(editor: Editor | null): DocumentDialogs {
     setOpen(null)
   }, [editor])
 
+  const openEquation = useCallback(() => {
+    if (!editor) return
+    setEquationTarget(selectedEquation(editor))
+    setOpen('equation')
+  }, [editor])
+
+  /*
+   * Editing replaces rather than updates in place when the kind changes.
+   * `updateInlineMath` cannot turn an inline formula into a block one -- they
+   * are different node types -- so a changed "on its own line" deletes the old
+   * node and inserts the other, which is also what keeps it one undo step.
+   */
+  const submitEquation = useCallback(
+    ({ latex, display }: { latex: string; display: boolean }) => {
+      if (!editor) {
+        setOpen(null)
+        return
+      }
+
+      const chain = editor.chain().focus()
+      const editing = equationTarget !== null
+
+      if (editing && equationTarget.display === display) {
+        if (display) chain.updateBlockMath({ latex })
+        else chain.updateInlineMath({ latex })
+      } else {
+        if (editing) chain.deleteSelection()
+        if (display) chain.insertBlockMath({ latex })
+        else chain.insertInlineMath({ latex })
+      }
+
+      chain.run()
+      setEquationTarget(null)
+      setOpen(null)
+    },
+    [editor, equationTarget],
+  )
+
   const insertImage = useCallback(
     ({ src, alt }: { src: string; alt: string }) => {
       // The empty string is passed through rather than dropped. `alt=""` and a
@@ -116,6 +184,9 @@ export function useDocumentDialogs(editor: Editor | null): DocumentDialogs {
     openImage,
     toggleFind,
     openWordCount,
+    openEquation,
+    equationTarget,
+    submitEquation,
     close,
     submitLink,
     removeLink,

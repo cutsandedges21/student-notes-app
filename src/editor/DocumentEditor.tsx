@@ -169,6 +169,7 @@ interface DocumentEditorProps {
   onEditLink?: () => void
   onInsertImage?: () => void
   onFind?: () => void
+  onEquation?: () => void
   onHeaderChange?: (content: JSONContent) => void
   onFooterChange?: (content: JSONContent) => void
   /** Where the page number sits in the footer band, or `off`. */
@@ -201,6 +202,7 @@ export function DocumentEditor({
   onEditLink,
   onInsertImage,
   onFind,
+  onEquation,
   onHeaderChange,
   onFooterChange,
   pageNumbers = 'off',
@@ -503,6 +505,7 @@ export function DocumentEditor({
           onEditLink={onEditLink}
           onInsertImage={onInsertImage}
           onFind={onFind}
+          onEquation={onEquation}
         />
       )}
       <div

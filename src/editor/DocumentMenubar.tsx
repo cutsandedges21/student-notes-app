@@ -194,6 +194,7 @@ interface DocumentMenubarProps {
   onInsertImage: () => void
   onFind: () => void
   onShowWordCount: () => void
+  onEquation: () => void
   /** Where the page number sits in the footer, or `off`. */
   pageNumbers: PageNumberPosition
   onPageNumbersChange: (position: PageNumberPosition) => void
@@ -217,6 +218,7 @@ export function DocumentMenubar({
   onInsertImage,
   onFind,
   onShowWordCount,
+  onEquation,
   pageNumbers,
   onPageNumbersChange,
 }: DocumentMenubarProps) {
@@ -333,6 +335,7 @@ export function DocumentMenubar({
       items: [
         { label: 'Link', shortcut: 'Ctrl+K', onSelect: onEditLink },
         { label: 'Image', onSelect: onInsertImage },
+        { label: 'Equation', onSelect: onEquation },
         {
           label: 'Table',
           // Sweep to size, the same control the toolbar offers. A fixed 3x3

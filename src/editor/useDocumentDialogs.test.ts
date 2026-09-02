@@ -120,6 +120,96 @@ describe('useDocumentDialogs', () => {
     })
   })
 
+  describe('equations', () => {
+    /** Selects the first node of the given type, as clicking it would. */
+    function selectNode(type: string) {
+      let at = -1
+      editor.state.doc.descendants((node, pos) => {
+        if (at === -1 && node.type.name === type) at = pos
+      })
+      editor.commands.setNodeSelection(at)
+    }
+
+    function latexOf(type: string): string | undefined {
+      let found: string | undefined
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === type && found === undefined) {
+          found = node.attrs.latex as string
+        }
+      })
+      return found
+    }
+
+    it('opens empty when the selection is not an equation', () => {
+      const { result } = setup()
+      act(() => result.current.openEquation())
+      expect(result.current.equationTarget).toBeNull()
+    })
+
+    it('inserts an inline equation', () => {
+      const { result } = setup()
+      act(() => result.current.submitEquation({ latex: 'a^2', display: false }))
+      expect(latexOf('inlineMath')).toBe('a^2')
+    })
+
+    it('inserts a block equation when set on its own line', () => {
+      const { result } = setup()
+      act(() => result.current.submitEquation({ latex: '\\int x', display: true }))
+      expect(latexOf('blockMath')).toBe('\\int x')
+    })
+
+    /**
+     * Without this a typo in a derivation can only be fixed by deleting the
+     * formula and typing the whole thing again: the node renders as maths as
+     * soon as it is valid, so there is no source left on screen to correct.
+     */
+    it('opens on the selected equation, carrying its source', () => {
+      const { result } = setup()
+      act(() => result.current.submitEquation({ latex: 'a^2 + b^2', display: false }))
+
+      act(() => {
+        selectNode('inlineMath')
+        result.current.openEquation()
+      })
+
+      expect(result.current.equationTarget).toEqual({ latex: 'a^2 + b^2', display: false })
+    })
+
+    it('updates the selected equation in place', () => {
+      const { result } = setup()
+      act(() => result.current.submitEquation({ latex: 'a^2', display: false }))
+
+      act(() => {
+        selectNode('inlineMath')
+        result.current.openEquation()
+      })
+      act(() => result.current.submitEquation({ latex: 'c^2', display: false }))
+
+      expect(latexOf('inlineMath')).toBe('c^2')
+      // Updated, not duplicated.
+      let count = 0
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === 'inlineMath') count += 1
+      })
+      expect(count).toBe(1)
+    })
+
+    /** Inline and block are different node types, so this is a replacement. */
+    it('converts an inline equation to a block one', () => {
+      const { result } = setup()
+      act(() => result.current.submitEquation({ latex: 'a^2', display: false }))
+
+      act(() => {
+        selectNode('inlineMath')
+        result.current.openEquation()
+      })
+      act(() => result.current.submitEquation({ latex: 'a^2', display: true }))
+
+      expect(latexOf('blockMath')).toBe('a^2')
+      expect(latexOf('inlineMath')).toBeUndefined()
+    })
+  })
+
   describe('word count', () => {
     it('counts the document', () => {
       const { result } = setup('<p>one two three</p>')
