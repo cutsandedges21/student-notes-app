@@ -301,6 +301,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
                 onFixIssue={(issue) => applyIssueFix(issue, turn.target)}
                 onDismissIssue={() => undefined}
                 onOpenSource={openSource}
+                historical={turn.historical}
               />
             ) : (
               <div key={turn.id} className="flex gap-2">

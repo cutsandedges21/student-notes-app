@@ -85,9 +85,11 @@ interface IssueListProps {
   issues: AiIssue[]
   onFix: (issue: AiIssue) => void
   onDismiss: (issue: AiIssue) => void
+  /** Read back from an earlier session: still worth reading, not applicable. */
+  historical?: boolean
 }
 
-function IssueList({ issues, onFix, onDismiss }: IssueListProps) {
+function IssueList({ issues, onFix, onDismiss, historical = false }: IssueListProps) {
   return (
     <div className="mt-3 space-y-3">
       {issues.map((issue) => (
@@ -108,14 +110,23 @@ function IssueList({ issues, onFix, onDismiss }: IssueListProps) {
             {issue.correction}
           </p>
 
-          <div className="mt-3 flex gap-2">
-            <Button size="sm" variant="primary" onClick={() => onFix(issue)}>
-              Fix this
-            </Button>
-            <Button size="sm" onClick={() => onDismiss(issue)}>
-              Leave unchanged
-            </Button>
-          </div>
+          {historical ? (
+            /* The correction is still worth reading; applying it is not on
+               offer, because the passage it was written against may not be
+               there any more. Asking again produces a fresh, anchored one. */
+            <p className="mt-3 text-xs text-ink-faint">
+              From an earlier conversation. Ask again to apply it.
+            </p>
+          ) : (
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" variant="primary" onClick={() => onFix(issue)}>
+                Fix this
+              </Button>
+              <Button size="sm" onClick={() => onDismiss(issue)}>
+                Leave unchanged
+              </Button>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -136,6 +147,15 @@ interface SuggestionCardProps {
    * note but does not pretend to be a link.
    */
   onOpenSource?: (source: AiSource) => void
+  /**
+   * Read back from an earlier session.
+   *
+   * The answer, its citations and what it added are all still worth reading.
+   * What is gone is the anchor into the document the suggestion was made
+   * against, and without that anchor applying it means pasting old text at a
+   * guessed location. So a historical card shows and offers nothing to apply.
+   */
+  historical?: boolean
 }
 
 export function SuggestionCard({
@@ -144,17 +164,25 @@ export function SuggestionCard({
   onApply,
   onReject,
   onOpenSource,
+  historical = false,
   onFixIssue,
   onDismissIssue,
 }: SuggestionCardProps) {
-  const hasProposal = Boolean(result.proposed_content)
+  // A historical card has no anchor to apply against, so it has no proposal
+  // to offer -- the text is still shown, just not as something to accept.
+  const hasProposal = Boolean(result.proposed_content) && !historical
 
   return (
     <div className="rounded border border-line bg-surface-backdrop p-3">
       <p className="text-sm text-ink">{result.response}</p>
 
       {result.issues.length > 0 && (
-        <IssueList issues={result.issues} onFix={onFixIssue} onDismiss={onDismissIssue} />
+        <IssueList
+          issues={result.issues}
+          onFix={onFixIssue}
+          onDismiss={onDismissIssue}
+          historical={historical}
+        />
       )}
 
       {hasProposal && (

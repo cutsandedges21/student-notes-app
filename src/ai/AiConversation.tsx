@@ -20,6 +20,8 @@ import {
 } from '../types/ai'
 import { describeSelectionNeeded } from '../lib/shortcuts'
 import type { ApplyResult, SuggestionTarget } from '../editor/applySuggestion'
+import { appendTurn, clearConversation, loadConversation } from '../services/conversations'
+import { useAuth } from '../contexts/AuthContext'
 
 /**
  * One conversation, wherever it is being shown.
@@ -47,6 +49,17 @@ export interface AiSelection {
 export interface Turn {
   id: string
   role: 'user' | 'assistant'
+  /**
+   * Read back from a previous session rather than produced in this one.
+   *
+   * A historical turn is readable and inert: it shows what was said, what the
+   * model added beyond the notes, and which notes it cited, and it offers to
+   * apply nothing. A suggestion is anchored to the document as it stood when
+   * it was made, that anchor cannot survive a reload, and an Apply button
+   * without one is an offer to paste old text at a guessed location -- the
+   * exact failure `editor/applySuggestion.ts` exists to prevent.
+   */
+  historical?: boolean
   /** Prose shown in the transcript. */
   content: string
   /** Present when the assistant proposed an edit. */
@@ -75,8 +88,12 @@ export interface AiConversation {
   ask: (text: string) => void
   /** Runs one of the suggested actions against a selection. */
   startAction: (mode: AiActionMode, target: AiSelection | null) => void
-  /** Empties the transcript, for "new conversation". */
+  /** Empties the transcript, for "new conversation". Forgets it on the server too. */
   clear: () => void
+  /** True while a stored transcript is being read back. */
+  loadingHistory: boolean
+  /** Set when the transcript could not be kept, so the panel can say so. */
+  historyError: string | null
   dismissTurn: (id: string) => void
   /**
    * Sends a suggestion to the document, surfacing why if it could not be
@@ -136,9 +153,96 @@ export function AiConversationProvider({
   onActivity,
   children,
 }: ProviderProps) {
+  const { user } = useAuth()
+  const userId = user?.id ?? null
+
   const [turns, setTurns] = useState<Turn[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /*
+   * The stored transcript for this note, keyed to the note it belongs to.
+   *
+   * Keyed rather than cleared by an effect for the reason version history and
+   * search both landed on: held apart, there is a render where the previous
+   * note's conversation sits under the new note's title, and here that is a
+   * transcript about a document the student is no longer looking at.
+   */
+  const [history, setHistory] = useState<{ documentId: string; turns: Turn[] } | null>(null)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  /** The conversation rows belong to, once known, so it is looked up once. */
+  const conversationRef = useRef<string | null>(null)
+
+  const restored = history?.documentId === documentId ? history.turns : null
+  const loadingHistory = Boolean(userId) && restored === null
+
+  /*
+   * Read the stored transcript when the note changes.
+   *
+   * Restored turns are marked historical, which is what makes them inert: a
+   * suggestion's anchor into the document cannot survive a reload, so the
+   * answer is readable and offers to apply nothing.
+   */
+  useEffect(() => {
+    if (!userId) {
+      setHistory({ documentId, turns: [] })
+      return
+    }
+
+    let cancelled = false
+    conversationRef.current = null
+
+    loadConversation(userId, documentId)
+      .then((stored) => {
+        if (cancelled) return
+        setHistory({
+          documentId,
+          turns: stored.map((turn) => ({
+            id: turn.id,
+            role: turn.role,
+            content: turn.content,
+            result: turn.payload ?? undefined,
+            historical: true,
+          })),
+        })
+      })
+      .catch((caught) => {
+        if (cancelled) return
+        console.error('[AiConversation] could not read the transcript:', caught)
+        // Not fatal: the assistant still works, it just starts empty. Saying
+        // so beats a silently blank panel that looks like nothing was said.
+        setHistoryError('Earlier messages could not be loaded.')
+        setHistory({ documentId, turns: [] })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [userId, documentId])
+
+  /**
+   * Writes a turn, without letting a failure to store it break the answer.
+   *
+   * The transcript on screen is the live one; this is a copy for next time.
+   * A student mid-conversation does not need an error about a durability
+   * concern they have not thought about, so it is logged and surfaced quietly
+   * rather than thrown into the panel.
+   */
+  const persist = useCallback(
+    (turn: { role: 'user' | 'assistant'; content: string; mode: AiMode; payload?: AiResponse | null }) => {
+      if (!userId) return
+
+      void appendTurn(userId, documentId, classId, turn, conversationRef.current)
+        .then((conversationId) => {
+          conversationRef.current = conversationId
+          setHistoryError(null)
+        })
+        .catch((caught) => {
+          console.error('[AiConversation] could not keep a turn:', caught)
+          setHistoryError('This conversation is not being saved.')
+        })
+    },
+    [userId, documentId, classId],
+  )
   /*
    * Set when a suggestion was declined in the document. The next thing typed
    * is then treated as "what was wrong with it" and re-runs that same action on
@@ -169,6 +273,7 @@ export function AiConversationProvider({
       setError(null)
       setBusy(true)
       setTurns((current) => [...current, { id: newId(), role: 'user', content: label }])
+      persist({ role: 'user', content: label, mode: mode ?? 'CHAT' })
 
       try {
         const result = await call()
@@ -183,6 +288,14 @@ export function AiConversationProvider({
             target: target ?? undefined,
           },
         ])
+        persist({
+          role: 'assistant',
+          content: result.response,
+          mode: mode ?? 'CHAT',
+          // The whole validated response: the citations and the added-by-AI
+          // list are what somebody reopens a conversation to re-read.
+          payload: result,
+        })
 
         // A rewrite is shown in the note, next to the words it would replace.
         // Modes that only explain or answer have nothing to put there.
@@ -216,7 +329,7 @@ export function AiConversationProvider({
         setBusy(false)
       }
     },
-    [onPreview],
+    [onPreview, persist],
   )
 
   /**
@@ -362,9 +475,11 @@ export function AiConversationProvider({
 
   const value = useMemo<AiConversation>(
     () => ({
-      turns,
+      turns: restored ? [...restored, ...turns] : turns,
       busy,
       error,
+      loadingHistory,
+      historyError,
       revising: revising !== null,
       ask,
       startAction,
@@ -372,13 +487,37 @@ export function AiConversationProvider({
         setTurns([])
         setError(null)
         setRevising(null)
+        setHistory({ documentId, turns: [] })
+        conversationRef.current = null
+        // "New conversation" means stop carrying what was said. Leaving the
+        // rows would bring them back on the next reload, which is the
+        // opposite of what was asked for.
+        void clearConversation(userId, documentId).catch((caught) => {
+          console.error('[AiConversation] could not forget the transcript:', caught)
+          setHistoryError('Earlier messages could not be deleted.')
+        })
       },
       dismissTurn: (id) => setTurns((current) => current.filter((turn) => turn.id !== id)),
       apply,
       applyIssueFix,
       selection,
     }),
-    [turns, busy, error, revising, ask, startAction, apply, applyIssueFix, selection],
+    [
+      turns,
+      restored,
+      loadingHistory,
+      historyError,
+      busy,
+      error,
+      revising,
+      ask,
+      startAction,
+      apply,
+      applyIssueFix,
+      selection,
+      userId,
+      documentId,
+    ],
   )
 
   return <Context.Provider value={value}>{children}</Context.Provider>

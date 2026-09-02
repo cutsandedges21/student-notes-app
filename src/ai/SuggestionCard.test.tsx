@@ -96,3 +96,88 @@ describe('SuggestionCard citations', () => {
     expect(screen.getByText('From your notes')).toBeVisible()
   })
 })
+
+/**
+ * A restored answer is readable and inert.
+ *
+ * A suggestion is anchored to the document as it stood when it was made, and
+ * that anchor cannot survive a reload -- the note can be edited in between.
+ * Offering to apply it anyway would be pasting old text at a guessed location,
+ * which is the exact failure `applySuggestion.ts` exists to prevent. So a
+ * historical card keeps everything worth reading and offers nothing to press.
+ */
+describe('restored from an earlier conversation', () => {
+  it('does not offer to apply a rewrite', () => {
+    render(
+      <SuggestionCard
+        result={answer({ proposed_content: 'A tidier version.' })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        historical
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull()
+  })
+
+  it('still offers it in a live conversation', () => {
+    render(
+      <SuggestionCard
+        result={answer({ proposed_content: 'A tidier version.' })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeVisible()
+  })
+
+  it('shows a past correction without offering to make it', () => {
+    render(
+      <SuggestionCard
+        result={answer({
+          issues: [
+            {
+              original: 'chloroplast',
+              problem: 'Respiration happens in the mitochondrion.',
+              correction: 'mitochondrion',
+              confidence: 'high',
+            },
+          ],
+        })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        historical
+      />,
+    )
+
+    // The correction is still there to read.
+    expect(screen.getByText('mitochondrion')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Fix this' })).toBeNull()
+    expect(screen.getByText(/Ask again to apply it/)).toBeVisible()
+  })
+
+  it('keeps its citations, which are what a reopened answer is for', () => {
+    render(
+      <SuggestionCard
+        result={answer({
+          sources: [{ documentId: ID, title: 'Lecture 4', className: 'Biology' }],
+        })}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+        onOpenSource={vi.fn()}
+        historical
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Lecture 4/ })).toBeEnabled()
+  })
+})
