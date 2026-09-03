@@ -88,6 +88,8 @@ export interface AiConversation {
   ask: (text: string) => void
   /** Runs one of the suggested actions against a selection. */
   startAction: (mode: AiActionMode, target: AiSelection | null) => void
+  /** Stops a request in flight. Nothing to stop when not busy. */
+  cancel: () => void
   /** Empties the transcript, for "new conversation". Forgets it on the server too. */
   clear: () => void
   /** True while a stored transcript is being read back. */
@@ -173,6 +175,15 @@ export function AiConversationProvider({
   const [historyError, setHistoryError] = useState<string | null>(null)
   /** The conversation rows belong to, once known, so it is looked up once. */
   const conversationRef = useRef<string | null>(null)
+  /*
+   * The request in flight, so it can be stopped.
+   *
+   * A real abort rather than ignoring the answer: an abandoned request is
+   * still generating, still costing, and still counted against the student's
+   * quota. Waiting thirty seconds with no way out is bad; paying for the wait
+   * you cancelled is worse.
+   */
+  const inFlightRef = useRef<AbortController | null>(null)
 
   const restored = history?.documentId === documentId ? history.turns : null
   const loadingHistory = Boolean(userId) && restored === null
@@ -267,18 +278,24 @@ export function AiConversationProvider({
   const run = useCallback(
     async (
       label: string,
-      call: () => Promise<AiResponse>,
+      call: (signal: AbortSignal) => Promise<AiResponse>,
       original?: string,
       target?: AiSelection | null,
       mode?: AiActionMode,
     ) => {
       setError(null)
       setBusy(true)
+
+      // A second request replaces the first rather than racing it.
+      inFlightRef.current?.abort()
+      const controller = new AbortController()
+      inFlightRef.current = controller
+
       setTurns((current) => [...current, { id: newId(), role: 'user', content: label }])
       persist({ role: 'user', content: label, mode: mode ?? 'CHAT' })
 
       try {
-        const result = await call()
+        const result = await call(controller.signal)
         setTurns((current) => [
           ...current,
           {
@@ -324,10 +341,14 @@ export function AiConversationProvider({
         }
       } catch (caught) {
         const code = caught instanceof AiRequestError ? caught.code : 'UPSTREAM_ERROR'
-        setError(describeAiError(code))
+        // Stopping is something the student did on purpose. The prompt still
+        // goes, so the transcript does not imply an answer came -- but no
+        // error is shown for a thing that worked as asked.
+        if (code !== 'CANCELLED') setError(describeAiError(code))
         // Drop the orphaned prompt so the transcript doesn't imply an answer came.
         setTurns((current) => current.slice(0, -1))
       } finally {
+        if (inFlightRef.current === controller) inFlightRef.current = null
         setBusy(false)
       }
     },
@@ -363,7 +384,7 @@ export function AiConversationProvider({
       const excerpt = `${target.text.slice(0, 60)}${target.text.length > 60 ? '…' : ''}`
       void run(
         `${AI_MODE_LABELS[mode]} — “${excerpt}”`,
-        () => action.run({ documentId, classId, selectedText: target.text }),
+        (signal) => action.run({ documentId, classId, selectedText: target.text }, undefined, signal),
         target.text,
         target,
         mode,
@@ -393,10 +414,11 @@ export function AiConversationProvider({
         if (action) {
           void run(
             asked,
-            () =>
+            (signal) =>
               action.run(
                 { documentId, classId, selectedText: pending.target.text },
                 asked,
+                signal,
               ),
             pending.target.text,
             pending.target,
@@ -416,8 +438,13 @@ export function AiConversationProvider({
        */
       void run(
         asked,
-        () =>
-          AIService.chat({ documentId, classId, selectedText: selection?.text }, asked, history),
+        (signal) =>
+          AIService.chat(
+            { documentId, classId, selectedText: selection?.text },
+            asked,
+            history,
+            signal,
+          ),
         undefined,
         selection,
       )
@@ -485,7 +512,12 @@ export function AiConversationProvider({
       revising: revising !== null,
       ask,
       startAction,
+      cancel: () => {
+        inFlightRef.current?.abort()
+        inFlightRef.current = null
+      },
       clear: () => {
+        inFlightRef.current?.abort()
         setTurns([])
         setError(null)
         setRevising(null)

@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { AiSidebar } from './AiSidebar'
 import { AiConversationProvider, type AiSelection } from './AiConversation'
-import type { AiResponse } from '../types/ai'
+import { AiRequestError, type AiResponse } from '../types/ai'
 
 const improve = vi.fn()
 
@@ -25,7 +25,9 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../services/aiClient', () => ({
   AIService: { chat: vi.fn() },
   AI_ACTIONS: [
-    { mode: 'IMPROVE_NOTES', run: (target: unknown) => improve(target) },
+    // Every argument forwarded, including the abort signal: a mock that drops
+    // one cannot be used to check that it was passed.
+    { mode: 'IMPROVE_NOTES', run: (...args: unknown[]) => improve(...args) },
     { mode: 'CHECK_NOTES', run: vi.fn() },
     { mode: 'EXPLAIN', run: vi.fn() },
     { mode: 'MAKE_CLEARER', run: vi.fn() },
@@ -99,9 +101,11 @@ describe('AiSidebar', () => {
       renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
 
       await waitFor(() => expect(improve).toHaveBeenCalledTimes(1))
-      expect(improve).toHaveBeenCalledWith(
-        expect.objectContaining({ selectedText: 'mitochondria make ATP' }),
-      )
+      // The first argument, rather than the whole call: an abort signal
+      // travels alongside it now, and this test is about the target.
+      expect(improve.mock.calls[0][0]).toMatchObject({
+        selectedText: 'mitochondria make ATP',
+      })
       expect(await screen.findByText('Here is a tidier version.')).toBeInTheDocument()
     })
   })
@@ -231,5 +235,55 @@ describe('AiSidebar', () => {
       const button = screen.getByRole('button', { name: new RegExp(label) })
       expect(button).toHaveTextContent(keys)
     }
+  })
+})
+
+/**
+ * Stopping a request.
+ *
+ * Thirty seconds of "Thinking…" with no way out is a bad wait; paying for a
+ * wait you gave up on is worse. The signal is passed through to the request so
+ * the abort is real, and a stopped request is not reported as a failure --
+ * it did exactly what was asked.
+ */
+describe('stopping', () => {
+  it('offers a way out while it is thinking', async () => {
+    // A request that never settles, so the panel stays busy.
+    improve.mockImplementation(() => new Promise(() => {}))
+    renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
+
+    expect(await screen.findByRole('button', { name: 'Stop' })).toBeVisible()
+  })
+
+  it('aborts the request rather than abandoning it', async () => {
+    let received: AbortSignal | undefined
+    improve.mockImplementation((_target, _request, signal?: AbortSignal) => {
+      received = signal
+      return new Promise(() => {})
+    })
+    renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop' }))
+
+    expect(received?.aborted).toBe(true)
+  })
+
+  it('shows no error for something the student did on purpose', async () => {
+    improve.mockImplementation(
+      (_target: unknown, _request: unknown, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () =>
+            reject(new AiRequestError('CANCELLED')),
+          )
+        }),
+    )
+    renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull(),
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

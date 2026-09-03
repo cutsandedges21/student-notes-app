@@ -16,14 +16,23 @@ import {
  * code. The Gemini key lives only in the edge function.
  */
 
-async function invoke(request: AiRequest): Promise<AiResponse> {
+async function invoke(request: AiRequest, signal?: AbortSignal): Promise<AiResponse> {
   if (!isSupabaseConfigured) throw new AiRequestError('NOT_CONFIGURED')
 
   const { data, error } = await supabase.functions.invoke('ai-assist', {
     body: request,
+    signal,
   })
 
   if (error) {
+    /*
+     * A cancelled request is not a failure, and must not be reported as one.
+     * `supabase-js` surfaces an abort as an ordinary error, so it is
+     * recognised here rather than at every call site -- the alternative is an
+     * error toast every time somebody changes their mind.
+     */
+    if (signal?.aborted) throw new AiRequestError('CANCELLED')
+
     // supabase-js wraps non-2xx responses; the body still carries our code.
     let code: AiErrorCode = 'UPSTREAM_ERROR'
     try {
@@ -61,8 +70,8 @@ interface Target {
   selectedText?: string
 }
 
-const call = (mode: AiMode, target: Target, userRequest?: string) =>
-  invoke({ mode, ...target, userRequest })
+const call = (mode: AiMode, target: Target, userRequest?: string, signal?: AbortSignal) =>
+  invoke({ mode, ...target, userRequest }, signal)
 
 /*
  * `userRequest` steers a re-run: when a student declines a suggestion and says
@@ -70,22 +79,27 @@ const call = (mode: AiMode, target: Target, userRequest?: string) =>
  * that instruction attached.
  */
 export const AIService = {
-  improveNotes: (target: Target, userRequest?: string) =>
-    call('IMPROVE_NOTES', target, userRequest),
-  checkNotes: (target: Target, userRequest?: string) =>
-    call('CHECK_NOTES', target, userRequest),
-  explain: (target: Target, userRequest?: string) => call('EXPLAIN', target, userRequest),
-  makeClearer: (target: Target, userRequest?: string) =>
-    call('MAKE_CLEARER', target, userRequest),
-  examReady: (target: Target, userRequest?: string) =>
-    call('EXAM_READY', target, userRequest),
-  chat: (target: Target, question: string, conversation: AiRequest['conversation']) =>
-    invoke({ mode: 'CHAT', ...target, userRequest: question, conversation }),
+  improveNotes: (target: Target, userRequest?: string, signal?: AbortSignal) =>
+    call('IMPROVE_NOTES', target, userRequest, signal),
+  checkNotes: (target: Target, userRequest?: string, signal?: AbortSignal) =>
+    call('CHECK_NOTES', target, userRequest, signal),
+  explain: (target: Target, userRequest?: string, signal?: AbortSignal) =>
+    call('EXPLAIN', target, userRequest, signal),
+  makeClearer: (target: Target, userRequest?: string, signal?: AbortSignal) =>
+    call('MAKE_CLEARER', target, userRequest, signal),
+  examReady: (target: Target, userRequest?: string, signal?: AbortSignal) =>
+    call('EXAM_READY', target, userRequest, signal),
+  chat: (
+    target: Target,
+    question: string,
+    conversation: AiRequest['conversation'],
+    signal?: AbortSignal,
+  ) => invoke({ mode: 'CHAT', ...target, userRequest: question, conversation }, signal),
 }
 
 export const AI_ACTIONS: {
   mode: Exclude<AiMode, 'CHAT'>
-  run: (t: Target, userRequest?: string) => Promise<AiResponse>
+  run: (t: Target, userRequest?: string, signal?: AbortSignal) => Promise<AiResponse>
 }[] =
   [
     { mode: 'IMPROVE_NOTES', run: AIService.improveNotes },

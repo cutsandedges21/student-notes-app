@@ -118,6 +118,13 @@ export type AiErrorCode =
   /** The request body exceeded the endpoint's cap. */
   | 'PAYLOAD_TOO_LARGE'
   /**
+   * The student stopped it.
+   *
+   * Not a failure, and the panel must not show it as one -- it is carried as
+   * an error only because that is how an abandoned promise reports itself.
+   */
+  | 'CANCELLED'
+  /**
    * The calling origin is not on the endpoint's allowlist.
    *
    * A deployment problem rather than anything the student did, so the copy
@@ -163,6 +170,13 @@ export function describeAiError(code: AiErrorCode): string {
       return 'That selection is too large. Try a smaller section.'
     case 'FORBIDDEN_ORIGIN':
       return 'The AI assistant is not available from this address.'
+    /*
+     * Reached only if something shows this anyway. Stopping is a thing the
+     * student did on purpose, so the wording is a statement rather than an
+     * apology -- and the panel does not display it at all.
+     */
+    case 'CANCELLED':
+      return 'Stopped.'
     default:
       return "The AI couldn't complete that request. Try again."
   }

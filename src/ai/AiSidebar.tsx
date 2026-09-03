@@ -163,6 +163,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
     apply,
     applyIssueFix,
     classId,
+    cancel,
   } = useAiConversation()
 
   const [question, setQuestion] = useState('')
@@ -320,12 +321,24 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
         </div>
 
         {busy && (
-          <p className="mt-4 text-sm text-ink-faint" aria-live="polite">
-            <span className="inline-flex gap-1">
-              Thinking
-              <span className="animate-pulse">…</span>
-            </span>
-          </p>
+          <div className="mt-4 flex items-center gap-3">
+            <p className="text-sm text-ink-faint" aria-live="polite">
+              <span className="inline-flex gap-1">
+                Thinking
+                <span className="animate-pulse">…</span>
+              </span>
+            </p>
+            {/* A real abort, not an ignored answer: an abandoned request is
+                still generating, still costing, and still counted against the
+                student's quota. */}
+            <button
+              type="button"
+              onClick={cancel}
+              className="text-sm font-medium text-ink-muted underline underline-offset-2 hover:text-ink"
+            >
+              Stop
+            </button>
+          </div>
         )}
 
         {error && (
