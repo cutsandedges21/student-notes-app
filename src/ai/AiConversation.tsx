@@ -141,8 +141,15 @@ interface ProviderProps {
   ) => void
   pendingMode: { mode: AiMode; selection: AiSelection | null } | null
   onPendingHandled: () => void
-  /** Opens whichever surface is showing the assistant, so an answer is not sent into the void. */
-  onActivity?: () => void
+  /**
+   * Something is about to be asked, so the assistant should be visible.
+   *
+   * Carries why. A named action produces a suggestion with a transcript and
+   * buttons behind it, which wants the column; a question typed into the
+   * docked bar was a deliberate choice to stay in the bar, and moving the
+   * assistant out from under the pointer mid-sentence would be its own bug.
+   */
+  onActivity?: (reason: 'action' | 'chat') => void
   children: ReactNode
 }
 
@@ -369,7 +376,7 @@ export function AiConversationProvider({
       const action = AI_ACTIONS.find((entry) => entry.mode === mode)
       if (!action) return
 
-      onActivity?.()
+      onActivity?.('action')
 
       if (!target?.text.trim()) {
         setError(null)
@@ -398,7 +405,7 @@ export function AiConversationProvider({
       const asked = text.trim()
       if (!asked || busyRef.current) return
 
-      onActivity?.()
+      onActivity?.('chat')
 
       /*
        * A declined suggestion turns the next message into a revision: the same
@@ -463,7 +470,7 @@ export function AiConversationProvider({
     // CHAT has no suggested-action button; it just opens the assistant so the
     // question box can be used against the selection.
     if (mode === 'CHAT') {
-      onActivity?.()
+      onActivity?.('chat')
       return
     }
     startAction(mode, target)

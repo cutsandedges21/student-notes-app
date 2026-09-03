@@ -19,15 +19,14 @@ const ACTIONS: { mode: AiMode; label: string }[] = [
   { mode: 'IMPROVE_NOTES', label: 'Improve' },
   { mode: 'EXPLAIN', label: 'Explain' },
   { mode: 'CHECK_NOTES', label: 'Check' },
-  { mode: 'CHAT', label: 'Ask AI' },
 ]
 
 /**
  * The one element in the app that appears without being asked for — and only
  * in direct response to the student deliberately selecting text.
  *
- * Text labels rather than icons: four unlabelled glyphs above a selection would
- * be a guessing game.
+ * Text labels rather than icons: unlabelled glyphs above a selection would be
+ * a guessing game.
  *
  * Comment sits here because this is the moment commenting becomes possible at
  * all -- a thread has to anchor to a selection, so the bar that appears on
@@ -35,7 +34,7 @@ const ACTIONS: { mode: AiMode; label: string }[] = [
  * only from one icon among thirty in the formatting toolbar, which is a poor
  * place to discover a feature you have to already know exists.
  *
- * It is set apart from the four AI actions by a divider and its own styling.
+ * It is set apart from the AI actions by a divider and its own styling.
  * Commenting is a thing the student does; the others are things the model
  * does, and grouping them would suggest the comment was going to be answered.
  */

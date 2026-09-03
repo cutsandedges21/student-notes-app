@@ -29,7 +29,6 @@ describe('SelectionToolbar', () => {
     expect(screen.getByRole('button', { name: 'Comment' })).toBeVisible()
     // Still there, and not replaced by it.
     expect(screen.getByRole('button', { name: 'Improve' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Ask AI' })).toBeVisible()
   })
 
   it('starts a comment when it is pressed', async () => {

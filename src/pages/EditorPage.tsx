@@ -171,7 +171,7 @@ export default function EditorPage() {
    * tree, so nothing but sequencing makes them read as the same thing
    * travelling.
    */
-  const moveAi = useCallback(async (next: 'dock' | 'panel') => {
+  const moveAi = useCallback(async (next: 'dock' | 'panel', remember = true) => {
     // The panel is on the left, so that is the direction of travel.
     await flyOut(
       next === 'panel'
@@ -181,10 +181,18 @@ export default function EditorPage() {
     )
 
     setAiPlacement(next)
-    try {
-      localStorage.setItem('margin:ai-placement', next)
-    } catch {
-      // A refused write costs the preference next session, nothing more.
+    /*
+     * Only a deliberate move changes the preference. An action opening the
+     * column is the app deciding where its answer fits, not the writer saying
+     * where they want to work -- and letting that rewrite the default would
+     * quietly cost them the docked bar they chose, one Improve at a time.
+     */
+    if (remember) {
+      try {
+        localStorage.setItem('margin:ai-placement', next)
+      } catch {
+        // A refused write costs the preference next session, nothing more.
+      }
     }
     if (next === 'panel') {
       setPanelTab('assistant')
@@ -1199,9 +1207,20 @@ export default function EditorPage() {
       onPreview={handlePreviewSuggestion}
       pendingMode={pendingMode}
       onPendingHandled={() => setPendingMode(null)}
-      // A shortcut or a toolbar action has to land somewhere visible, so
-      // whichever surface is in use opens itself.
-      onActivity={() => {
+      /*
+       * A named action opens the column, wherever the assistant was.
+       *
+       * It answers with a transcript, an original to compare against and
+       * buttons to accept or decline -- none of which fits in a one-line bar,
+       * and the bar is what the writer would otherwise be left staring at
+       * after asking for a rewrite. A question typed into the bar is left
+       * where it was typed: choosing the bar was the point.
+       */
+      onActivity={(reason) => {
+        if (reason === 'action' && aiPlacement === 'dock') {
+          void moveAi('panel', false)
+          return
+        }
         if (aiPlacement === 'panel') {
           setPanelTab('assistant')
           setSidebarOpen(true)
