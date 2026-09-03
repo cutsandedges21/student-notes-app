@@ -53,6 +53,9 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog'
 import { LoadingScreen } from '../components/LoadingScreen'
 import { snapshotDocument } from '../services/documents'
 import { uploadNoteImage } from '../services/imageUpload'
+import { documentToMarkdown, exportFilename } from '../lib/exportMarkdown'
+import { readImportFile, IMPORT_ACCEPT } from '../lib/importFile'
+import { downloadTextFile, pickFile } from '../lib/download'
 import type { AiMode } from '../types/ai'
 import type { Editor } from '@tiptap/react'
 import { type SaveState } from '../components/SaveStatus'
@@ -1060,6 +1063,68 @@ export default function EditorPage() {
     }
   }
 
+  /**
+   * Writes the note out as Markdown.
+   *
+   * From the editor rather than from the stored row: what is on screen is
+   * what the student means by "this note", and the last second of typing may
+   * not have been saved yet.
+   */
+  const exportMarkdown = () => {
+    if (!editor) return
+    downloadTextFile(
+      exportFilename(title, 'md'),
+      documentToMarkdown(editor.getJSON(), title),
+    )
+  }
+
+  /**
+   * Reads a file into a new note, in this class.
+   *
+   * A new note rather than into this one: importing over what is open would
+   * replace work with no way back, and the anchored-apply rules exist because
+   * exactly that kind of silent replacement is what this app got wrong before.
+   */
+  const importFile = async () => {
+    const file = await pickFile(IMPORT_ACCEPT)
+    // Dismissing the picker is not an error and is not reported as one.
+    if (!file) return
+
+    const classId = classIdRef.current
+    if (!classId) {
+      setActionError('Open a class before importing a file.')
+      return
+    }
+
+    const parsed = await readImportFile(file)
+    if (!parsed.ok) {
+      setActionError(parsed.error)
+      return
+    }
+
+    try {
+      const created = await createDocument(userId, classId, parsed.title)
+      const result = await saveDocument(userId, {
+        documentId: created.id,
+        title: parsed.title,
+        content: parsed.content,
+        expectedVersion: created.version,
+      })
+
+      if (result.status !== 'saved') {
+        setActionError(
+          `“${parsed.title}” was created but its contents did not save. Try importing again.`,
+        )
+        return
+      }
+
+      navigate(noteHref(classSlugRef.current ?? '', created.slug, created.id))
+    } catch (caught) {
+      console.error('[EditorPage] import failed:', caught)
+      setActionError(describeDataError(caught))
+    }
+  }
+
   /** Shows the existing discussion without starting a new thread. */
   const openComments = () => {
     setPanelTab('comments')
@@ -1206,6 +1271,8 @@ export default function EditorPage() {
                 onEquation={dialogs.openEquation}
                 onPageSetup={dialogs.openPageSetup}
                 onSearchNotes={openSearch}
+                onExportMarkdown={exportMarkdown}
+                onImportFile={() => void importFile()}
                 onPrint={handlePrint}
                 // Same document; the browser's dialog offers Save as PDF as a
                 // destination, which is what writes the file.

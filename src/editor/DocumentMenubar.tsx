@@ -197,6 +197,10 @@ interface DocumentMenubarProps {
   onEquation: () => void
   onPageSetup: () => void
   onSearchNotes: () => void
+  /** Writes the note out as a file. */
+  onExportMarkdown: () => void
+  /** Reads a file into a new note. */
+  onImportFile: () => void
   /** Where the page number sits in the footer, or `off`. */
   pageNumbers: PageNumberPosition
   onPageNumbersChange: (position: PageNumberPosition) => void
@@ -223,6 +227,8 @@ export function DocumentMenubar({
   onEquation,
   onPageSetup,
   onSearchNotes,
+  onExportMarkdown,
+  onImportFile,
   pageNumbers,
   onPageNumbersChange,
 }: DocumentMenubarProps) {
@@ -278,6 +284,8 @@ export function DocumentMenubar({
       items: [
         { label: 'New note', onSelect: onNewNote },
         { label: 'Rename', onSelect: onRename },
+        { label: 'Import a file…', onSelect: onImportFile, separatorBefore: true },
+        { label: 'Download as Markdown', onSelect: onExportMarkdown },
         {
           label: 'Download as PDF',
           onSelect: onExportPdf,

@@ -55,6 +55,7 @@ const TIERS: Tier[] = [
       'Share links, view or edit, revocable',
       'Version history you can browse and restore',
       'Search across every note, by title or by what is in it',
+      'Import and export Markdown; import plain text',
       'Paper size, orientation and margins, including A4',
       'AI assistant: improve, check, explain, exam-ready',
       'Print, and save as PDF through your browser',
@@ -68,9 +69,8 @@ const TIERS: Tier[] = [
     price: '—',
     blurb: 'Being built. Not available yet, and not charged for.',
     features: [
-      'Export to Word and Markdown',
+      'Word files, in and out',
       'Offline editing on mobile',
-      'Import from .docx and .md',
     ],
     cta: 'Open my notes',
     ctaTo: '/classes',
@@ -111,7 +111,7 @@ export default function UpgradePage() {
                 <h2 className="font-ui text-lg font-medium text-ink">{tier.name}</h2>
                 {tier.featured && (
                   <span className="rounded-full bg-accent-subtle px-2.5 py-1 text-xs font-medium text-accent">
-                    Most popular
+                    Available now
                   </span>
                 )}
               </div>
