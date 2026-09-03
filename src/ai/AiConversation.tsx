@@ -117,6 +117,8 @@ export interface AiConversation {
   selection: AiSelection | null
   /** The class the open note belongs to, so an offered note is filed with it. */
   classId: string
+  /** The note being discussed, so feedback can name what it was about. */
+  documentId: string
 }
 
 const Context = createContext<AiConversation | null>(null)
@@ -590,6 +592,7 @@ export function AiConversationProvider({
       applyIssueFix,
       selection,
       classId,
+      documentId,
     }),
     [
       turns,

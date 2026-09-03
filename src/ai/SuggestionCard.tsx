@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { FilePlus2, FileText } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import type { AiIssue, AiProposedAction, AiResponse, AiSource } from '../types/ai'
@@ -232,6 +233,13 @@ interface SuggestionCardProps {
   onRunAction?: (action: AiProposedAction) => void
   /** The offer currently being carried out, so its button can show progress. */
   runningAction?: AiProposedAction | null
+  /**
+   * Rating for this answer, rendered under it.
+   *
+   * Passed in rather than built here so the card stays a view: it knows what
+   * an answer looks like, not who is signed in or where a rating is stored.
+   */
+  feedback?: ReactNode
 }
 
 export function SuggestionCard({
@@ -245,6 +253,7 @@ export function SuggestionCard({
   onDismissIssue,
   onRunAction,
   runningAction,
+  feedback,
 }: SuggestionCardProps) {
   // A historical card has no anchor to apply against, so it has no proposal
   // to offer -- the text is still shown, just not as something to accept.
@@ -306,6 +315,7 @@ export function SuggestionCard({
         historical={historical}
       />
       <Sources sources={result.sources} onOpen={onOpenSource} />
+      {feedback}
     </div>
   )
 }

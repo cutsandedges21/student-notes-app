@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useOpenSource } from './useOpenSource'
 import { useProposedActions } from './useProposedActions'
+import { AnswerFeedback } from './AnswerFeedback'
+import { recordFeedback } from '../services/aiFeedback'
 
 export type { AiSelection } from './AiConversation'
 
@@ -163,6 +165,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
     apply,
     applyIssueFix,
     classId,
+    documentId,
     cancel,
     regenerate,
   } = useAiConversation()
@@ -309,6 +312,24 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
                 historical={turn.historical}
                 onRunAction={(action) => actions.run(action, classId)}
                 runningAction={actions.running}
+                feedback={
+                  // Not offered on a restored answer: rating something from a
+                  // previous session is rating something you are no longer
+                  // looking at, and the turn it belongs to is already stored.
+                  turn.historical ? undefined : (
+                    <AnswerFeedback
+                      disabled={!session}
+                      onRate={(rating, note) =>
+                        recordFeedback(session?.user?.id ?? null, {
+                          rating,
+                          note,
+                          documentId,
+                          mode: turn.result?.mode ?? 'CHAT',
+                        })
+                      }
+                    />
+                  )
+                }
               />
             ) : (
               <div key={turn.id} className="flex gap-2">
