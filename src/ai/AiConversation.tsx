@@ -90,6 +90,15 @@ export interface AiConversation {
   startAction: (mode: AiActionMode, target: AiSelection | null) => void
   /** Stops a request in flight. Nothing to stop when not busy. */
   cancel: () => void
+  /**
+   * Runs the last thing asked, again.
+   *
+   * Null when there is nothing to repeat. A model answers differently to the
+   * same question, so this is the cheapest useful response to a bad answer --
+   * cheaper than the student rewriting the question to work out what the model
+   * misread.
+   */
+  regenerate: (() => void) | null
   /** Empties the transcript, for "new conversation". Forgets it on the server too. */
   clear: () => void
   /** True while a stored transcript is being read back. */
@@ -191,6 +200,14 @@ export function AiConversationProvider({
    * you cancelled is worse.
    */
   const inFlightRef = useRef<AbortController | null>(null)
+  /*
+   * Enough to run the last request again.
+   *
+   * Held in a ref rather than derived from the transcript: the transcript has
+   * the words that were asked, and what is needed is the call that was made --
+   * the mode, the anchored target, and the text it was about.
+   */
+  const lastRunRef = useRef<(() => void) | null>(null)
 
   const restored = history?.documentId === documentId ? history.turns : null
   const loadingHistory = Boolean(userId) && restored === null
@@ -292,6 +309,8 @@ export function AiConversationProvider({
     ) => {
       setError(null)
       setBusy(true)
+      // Captured before the request goes, so a failed one can be retried too.
+      lastRunRef.current = () => void run(label, call, original, target, mode)
 
       // A second request replaces the first rather than racing it.
       inFlightRef.current?.abort()
@@ -523,8 +542,36 @@ export function AiConversationProvider({
         inFlightRef.current?.abort()
         inFlightRef.current = null
       },
+      /*
+       * Drops the answer being replaced before asking again, so the transcript
+       * does not end up holding two answers to one question with no way to
+       * tell which is the current one.
+       */
+      /*
+       * Whether there is anything to repeat is a ref, not state.
+       *
+       * It was a `useState`, and setting it inside `run` changed the identity
+       * of `startAction`, which re-fired the pending-action effect, which ran
+       * the request again. A ref needs no render of its own: every path that
+       * sets it also changes `turns` or `busy`, so the button appears anyway.
+       *
+       * Keyed on the last request rather than on the transcript, because a
+       * failed request removes its own prompt from the transcript -- and a
+       * failure is exactly when retrying matters most.
+       */
+      regenerate:
+        lastRunRef.current !== null && !busy
+          ? () => {
+              setTurns((current) => {
+                const lastUser = current.findLastIndex((turn) => turn.role === 'user')
+                return lastUser === -1 ? current : current.slice(0, lastUser)
+              })
+              lastRunRef.current?.()
+            }
+          : null,
       clear: () => {
         inFlightRef.current?.abort()
+        lastRunRef.current = null
         setTurns([])
         setError(null)
         setRevising(null)

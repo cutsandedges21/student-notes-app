@@ -287,3 +287,68 @@ describe('stopping', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
+
+/**
+ * Asking again.
+ *
+ * A model answers differently to the same question, so this is the cheapest
+ * useful response to an answer that missed the point -- cheaper than the
+ * student rewriting the question to work out what was misread.
+ */
+describe('trying again', () => {
+  // Its own reset: the beforeEach above lives inside another describe, so
+  // without this the counts carry over from earlier tests in this file.
+  beforeEach(() => {
+    improve.mockReset().mockResolvedValue(reply)
+  })
+
+  it('is not offered before anything has been asked', () => {
+    renderSidebar()
+
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
+  it('is offered once an answer has come back', async () => {
+    improve.mockResolvedValue(reply)
+    renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
+
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+
+  it('runs the same request again', async () => {
+    improve.mockResolvedValue(reply)
+    renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+
+    await waitFor(() => expect(improve).toHaveBeenCalledTimes(2))
+    // Against the same anchored text, not against whatever is selected now.
+    expect(improve.mock.calls[1][0]).toMatchObject({
+      selectedText: 'mitochondria make ATP',
+    })
+  })
+
+  /**
+   * Otherwise the transcript holds two answers to one question, with nothing
+   * saying which is the current one.
+   */
+  it('replaces the answer rather than appending a second', async () => {
+    improve.mockResolvedValue(reply)
+    renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Try again' }))
+
+    await waitFor(() => expect(improve).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(screen.getAllByText('Here is a tidier version.')).toHaveLength(1),
+    )
+  })
+
+  it('is offered after a failure too, so a retry is one click', async () => {
+    improve.mockRejectedValue(new AiRequestError('UPSTREAM_ERROR'))
+    renderSidebar({ pendingMode: { mode: 'IMPROVE_NOTES', selection } })
+
+    expect(await screen.findByRole('alert')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible()
+  })
+})

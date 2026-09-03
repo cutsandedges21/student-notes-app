@@ -164,6 +164,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
     applyIssueFix,
     classId,
     cancel,
+    regenerate,
   } = useAiConversation()
 
   const [question, setQuestion] = useState('')
@@ -345,6 +346,20 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
           <p role="alert" className="mt-4 text-sm text-danger">
             {error}
           </p>
+        )}
+
+        {/* Offered after an answer as well as after a failure: a model answers
+            differently to the same question, so asking again is the cheapest
+            useful response to an answer that missed the point -- cheaper than
+            rewriting the question to work out what was misread. */}
+        {regenerate && !busy && (
+          <button
+            type="button"
+            onClick={regenerate}
+            className="mt-4 text-sm font-medium text-ink-muted underline underline-offset-2 hover:text-ink"
+          >
+            Try again
+          </button>
         )}
 
         {/* The note the assistant just made, offered as somewhere to go
