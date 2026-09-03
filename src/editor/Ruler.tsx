@@ -30,7 +30,7 @@ export function Ruler({ leftMargin, rightMargin, onChange, zoom = 1 }: RulerProp
   useEffect(() => {
     if (!dragging) return
 
-    function handleMove(event: MouseEvent) {
+    function handleMove(event: PointerEvent) {
       const track = trackRef.current
       if (!track) return
 
@@ -53,13 +53,27 @@ export function Ruler({ leftMargin, rightMargin, onChange, zoom = 1 }: RulerProp
       setDragging(null)
     }
 
-    // Listeners live on the document so the drag survives the pointer leaving
-    // the marker, which is what makes the drag feel continuous.
-    document.addEventListener('mousemove', handleMove)
-    document.addEventListener('mouseup', handleUp)
+    /*
+     * Pointer events, not mouse events.
+     *
+     * A mouse listener never fires for a finger or a stylus, so the ruler was
+     * decoration on every touch screen wide enough to show it -- an iPad in
+     * landscape, a touchscreen laptop. Pointer events cover all three inputs
+     * with one set of handlers rather than three.
+     *
+     * On the document rather than the marker, so the drag survives the pointer
+     * leaving it, which is what makes it feel continuous. `pointercancel`
+     * matters as much as `pointerup`: a touch that becomes a browser gesture
+     * is cancelled rather than released, and without it the marker would stay
+     * stuck to a finger that had gone.
+     */
+    document.addEventListener('pointermove', handleMove)
+    document.addEventListener('pointerup', handleUp)
+    document.addEventListener('pointercancel', handleUp)
     return () => {
-      document.removeEventListener('mousemove', handleMove)
-      document.removeEventListener('mouseup', handleUp)
+      document.removeEventListener('pointermove', handleMove)
+      document.removeEventListener('pointerup', handleUp)
+      document.removeEventListener('pointercancel', handleUp)
     }
   }, [dragging, leftMargin, rightMargin, onChange, zoom])
 
@@ -86,7 +100,12 @@ export function Ruler({ leftMargin, rightMargin, onChange, zoom = 1 }: RulerProp
         aria-valuenow={Math.round(value)}
         aria-valuemin={0}
         aria-valuemax={Math.round(max)}
-        onMouseDown={() => setDragging(side)}
+        onPointerDown={(event) => {
+          // Stops the browser turning the drag into a scroll or a text
+          // selection, which on a touch screen it otherwise will.
+          event.preventDefault()
+          setDragging(side)
+        }}
         onKeyDown={(event) => {
           if (event.key === 'ArrowLeft') {
             event.preventDefault()
@@ -98,7 +117,7 @@ export function Ruler({ leftMargin, rightMargin, onChange, zoom = 1 }: RulerProp
           }
         }}
         style={{ [side]: offset }}
-        className="absolute top-0 z-10 -ml-[7px] -mr-[7px] flex h-full w-[14px] cursor-col-resize flex-col items-center"
+        className="absolute top-0 z-10 -ml-[7px] -mr-[7px] flex h-full w-[14px] cursor-col-resize touch-none flex-col items-center"
       >
         {/* Downward triangle over a bar on the left, triangle alone on the
             right -- the shapes Docs uses for the two ends. */}
