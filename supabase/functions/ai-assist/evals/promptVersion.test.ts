@@ -38,12 +38,13 @@ import { EVAL_CASES } from './cases.ts'
  * without somebody opening this file, and the cases cannot silently fall
  * behind a behaviour that was added after them.
  *
- * 1.4.0 — tools, citations, and offering to create a note.
+ * 1.5.0 — tools, citations, offering to create a note, and the note's
+ * structure and outline.
  *
  * **Never executed.** The first person with a key should run them, then record
  * the result here.
  */
-const EVALS_WRITTEN_FOR_PROMPT_VERSION = '1.4.0'
+const EVALS_WRITTEN_FOR_PROMPT_VERSION = '1.5.0'
 
 describe('eval coverage', () => {
   it('keeps pace with the prompt that ships', () => {

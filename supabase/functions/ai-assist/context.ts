@@ -7,6 +7,8 @@
  * here.
  */
 
+import { outlineOf, renderOutline, structureDocument, type JsonNode } from './structure.ts'
+
 export interface ContextClass {
   name: string
   course_code: string
@@ -18,6 +20,16 @@ export interface ContextClass {
 export interface ContextDocument {
   title: string
   content_text: string
+  /**
+   * The note as Tiptap JSON, when the caller has it.
+   *
+   * Preferred over `content_text`, which is every block flattened and joined:
+   * a heading and a sentence arrive identically there, a list reads as prose,
+   * and a table becomes a row of words. Optional because the flattened column
+   * is what older rows and the retrieval path have, and a note is better sent
+   * flat than not at all.
+   */
+  content?: unknown
 }
 
 export interface ContextNote {
@@ -162,7 +174,14 @@ export function buildAIContext(input: BuildContextInput): string {
     return `<<<STUDENT_NOTES\n${inert}\nSTUDENT_NOTES>>>`
   }
 
-  let documentText = document.content_text.trim()
+  /*
+   * Structured when the caller has the note's JSON, flattened when it does
+   * not. Falling back rather than requiring it: older rows and the retrieval
+   * path carry only `content_text`, and a note is better sent flat than not
+   * at all.
+   */
+  const structured = structureDocument(document.content as JsonNode | undefined)
+  let documentText = (structured || document.content_text).trim()
   if (documentText.length > BUDGETS.document) {
     // Prefer the region around the selection over the document's opening: the
     // student is asking about what they highlighted, not about paragraph one.
@@ -174,6 +193,8 @@ export function buildAIContext(input: BuildContextInput): string {
       documentText = truncate(documentText, BUDGETS.document)
     }
   }
+
+  const outline = renderOutline(outlineOf(document.content as JsonNode | undefined))
 
   const retrievalQuery = [userRequest, selectedText, document.title]
     .filter(Boolean)
@@ -204,6 +225,9 @@ export function buildAIContext(input: BuildContextInput): string {
     `PROFESSOR:\n${klass.professor || '(not provided)'}`,
     `SEMESTER:\n${klass.semester || '(not provided)'}`,
     `DOCUMENT:\n${document.title || 'Untitled note'}`,
+    // The shape of the note before its contents, so "what does the section on
+    // X say" can be answered by a model that knows there are sections.
+    `OUTLINE:\n${outline || '(no headings)'}`,
     `SELECTED TEXT:\n${selectedText ? fence(selectedText.trim()) : '(none)'}`,
     `CURRENT DOCUMENT:\n${documentText ? fence(documentText) : '(empty)'}`,
     `RELEVANT CLASS NOTES:\n${notesBlock ? fence(notesBlock) : '(none)'}`,

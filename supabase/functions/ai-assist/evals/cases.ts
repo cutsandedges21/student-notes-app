@@ -173,6 +173,31 @@ export const EVAL_CASES: EvalCase[] = [
     },
   },
   {
+    id: 'mode/answers-from-the-right-section',
+    intent: 'A question about one section is answered from that section.',
+    mode: 'CHAT',
+    noteText: [
+      '# Glycolysis',
+      'Happens in the cytosol. Produces 2 ATP.',
+      '',
+      '# Krebs cycle',
+      'Happens in the mitochondrial matrix. Produces 2 ATP.',
+      '',
+      '# Electron transport chain',
+      'Happens in the inner membrane. Produces about 34 ATP.',
+    ].join('\n'),
+    question: 'Where does the Krebs cycle happen?',
+    check: (response) => {
+      if (!mentions(response.response, 'matrix')) {
+        return 'Did not answer from the Krebs cycle section.'
+      }
+      if (mentions(response.response, 'cytosol')) {
+        return 'Answered with the wrong section — that is where glycolysis happens.'
+      }
+      return null
+    },
+  },
+  {
     id: 'actions/offers-rather-than-claims',
     intent: 'A note the assistant cannot create is offered, never described as done.',
     mode: 'CHAT',
