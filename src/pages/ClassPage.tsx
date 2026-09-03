@@ -13,6 +13,9 @@ import { RenameClassDialog } from '../components/RenameClassDialog'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { deleteClass } from '../services/classes'
 import { deleteDocument } from '../services/documents'
+import { duplicateDocument, moveDocument } from '../services/documentActions'
+import { fetchClasses } from '../services/classes'
+import { MoveNoteDialog } from '../components/MoveNoteDialog'
 import type { ClassRow, DocumentListItem } from '../types/database'
 
 export default function ClassPage() {
@@ -20,6 +23,9 @@ export default function ClassPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [klass, setKlass] = useState<ClassRow | null>(null)
+  /** The note being filed elsewhere, and the classes it could go to. */
+  const [moving, setMoving] = useState<{ id: string; title: string } | null>(null)
+  const [busyNote, setBusyNote] = useState<string | null>(null)
   const [documents, setDocuments] = useState<DocumentListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [professor, setProfessor] = useState('')
@@ -111,6 +117,46 @@ export default function ClassPage() {
     } catch (caught) {
       console.error('[ClassPage] failed to delete note:', caught)
       setError(describeDataError(caught))
+    }
+  }
+
+  /**
+   * Copies a note and opens the copy.
+   *
+   * Opening it is the point: a copy made and left in a list is one the student
+   * has to go and find, and the reason for making one is almost always to
+   * start changing it.
+   */
+  async function handleDuplicate(documentId: string) {
+    setBusyNote(documentId)
+    setError(null)
+    try {
+      const copy = await duplicateDocument(userId, documentId)
+      navigate(noteHref(klass?.slug ?? '', copy.slug, copy.id))
+    } catch (caught) {
+      console.error('[ClassPage] failed to copy note:', caught)
+      setError(describeDataError(caught))
+    } finally {
+      setBusyNote(null)
+    }
+  }
+
+  async function handleMove(destinationClassId: string) {
+    if (!moving) return
+    const noteId = moving.id
+    setMoving(null)
+    setBusyNote(noteId)
+    setError(null)
+    try {
+      await moveDocument(userId, noteId, destinationClassId)
+      // Reloaded rather than navigated: the note has left this class, and the
+      // student is looking at what is still in it.
+      await load()
+    } catch (caught) {
+      console.error('[ClassPage] failed to move note:', caught)
+      setError(describeDataError(caught))
+    } finally {
+      setBusyNote(null)
     }
   }
 
@@ -220,8 +266,19 @@ export default function ClassPage() {
                   label={`Options for ${doc.title || 'Untitled note'}`}
                   items={[
                     {
+                      label: busyNote === doc.id ? 'Working…' : 'Make a copy',
+                      disabled: busyNote !== null,
+                      onSelect: () => void handleDuplicate(doc.id),
+                    },
+                    {
+                      label: 'Move to another class…',
+                      disabled: busyNote !== null,
+                      onSelect: () => setMoving({ id: doc.id, title: doc.title }),
+                    },
+                    {
                       label: 'Delete note',
                       destructive: true,
+                      separatorBefore: true,
                       onSelect: () =>
                         setPendingDelete({ kind: 'note', id: doc.id, title: doc.title }),
                     },
@@ -232,6 +289,15 @@ export default function ClassPage() {
           </ul>
         )}
       </main>
+
+      <MoveNoteDialog
+        open={moving !== null}
+        noteTitle={moving?.title ?? ''}
+        currentClassId={klass.id}
+        loadClasses={() => fetchClasses(userId)}
+        onMove={handleMove}
+        onClose={() => setMoving(null)}
+      />
 
       <RenameClassDialog
         open={renameOpen}
