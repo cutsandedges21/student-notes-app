@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import type { AiMode, AiResponse } from '../types/ai'
+import { normaliseAiResponse } from '../lib/aiResponse'
 
 /**
  * The assistant's transcript, kept.
@@ -102,10 +103,14 @@ export async function loadConversation(
       role: record.role,
       content: record.content,
       mode: (record.mode as AiMode) ?? 'CHAT',
-      // Written by the edge function after Zod validated it, so it is the
-      // shape it claims to be -- but it is still a jsonb column anyone with
-      // the API could write to, so the UI must tolerate a null.
-      payload: (record.payload as AiResponse | null) ?? null,
+      /*
+       * Normalised on the way out for the same reason the network reply is:
+       * a row written before a field existed does not have it, and the card
+       * reads several of them unconditionally. A stored transcript is the
+       * one place where "written by an older version" is guaranteed rather
+       * than possible.
+       */
+      payload: normaliseAiResponse(record.payload, (record.mode as AiMode) ?? 'CHAT'),
       createdAt: record.created_at,
     }
   })

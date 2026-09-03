@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { normaliseAiResponse } from '../lib/aiResponse'
 import {
   AiRequestError,
   type AiMode,
@@ -35,12 +36,23 @@ async function invoke(request: AiRequest): Promise<AiResponse> {
     throw new AiRequestError(code)
   }
 
-  if (!data || typeof data.response !== 'string') {
+  /*
+   * Normalised, not cast.
+   *
+   * `data as AiResponse` was a promise the compiler could not keep: the thing
+   * on the other side of this call is a deployed function, and it is not
+   * guaranteed to be the version this build expects. Adding `sources` and
+   * `proposed_actions` to the type turned every reply from an edge function
+   * that had not been redeployed into a blank screen, because the card reads
+   * `result.sources.length`.
+   */
+  const normalised = normaliseAiResponse(data, request.mode)
+  if (!normalised) {
     console.error('[aiClient] malformed response payload:', data)
     throw new AiRequestError('INVALID_RESPONSE')
   }
 
-  return data as AiResponse
+  return normalised
 }
 
 interface Target {

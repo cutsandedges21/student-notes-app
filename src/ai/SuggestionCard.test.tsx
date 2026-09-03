@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SuggestionCard } from './SuggestionCard'
 import type { AiResponse } from '../types/ai'
+import { normaliseAiResponse } from '../lib/aiResponse'
 
 /**
  * Citations, as the student sees them.
@@ -288,5 +289,63 @@ describe('proposed actions', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Create this note' })).toBeDisabled()
+  })
+})
+
+/**
+ * The white screen, end to end.
+ *
+ * A reply from an edge function that had not been redeployed carries no
+ * `sources` and no `proposed_actions`. The card reads both unconditionally, so
+ * it threw, and with no error boundary in the app that meant the whole tree
+ * unmounted and the student saw nothing at all.
+ *
+ * The fix is at the boundary, so this feeds a genuinely old payload through it
+ * and renders the result.
+ */
+describe('a reply from an older deployment', () => {
+  const legacy = {
+    mode: 'CHECK_NOTES',
+    response: 'One thing to check.',
+    proposed_content: null,
+    issues: [
+      { original: 'chloroplast', problem: 'Wrong organelle.', correction: 'mitochondrion', confidence: 'high' },
+    ],
+    added_information: [],
+    // No `sources`. No `proposed_actions`. This is the payload that crashed.
+  }
+
+  it('renders instead of throwing', () => {
+    const normalised = normaliseAiResponse(legacy, 'CHECK_NOTES')
+    expect(normalised).not.toBeNull()
+
+    expect(() =>
+      render(
+        <SuggestionCard
+          result={normalised!}
+          onApply={vi.fn()}
+          onReject={vi.fn()}
+          onFixIssue={vi.fn()}
+          onDismissIssue={vi.fn()}
+        />,
+      ),
+    ).not.toThrow()
+
+    expect(screen.getByText('mitochondrion')).toBeVisible()
+  })
+
+  it('shows no citations and no offers, rather than failing to show anything', () => {
+    render(
+      <SuggestionCard
+        result={normaliseAiResponse(legacy, 'CHECK_NOTES')!}
+        onApply={vi.fn()}
+        onReject={vi.fn()}
+        onFixIssue={vi.fn()}
+        onDismissIssue={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('From your notes')).toBeNull()
+    expect(screen.queryByText('New note')).toBeNull()
   })
 })

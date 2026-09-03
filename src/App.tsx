@@ -10,6 +10,7 @@ import EditorPage from './pages/EditorPage'
 import SharedLinkPage from './pages/SharedLinkPage'
 import UpgradePage from './pages/UpgradePage'
 import { IntroSplash } from './components/IntroSplash'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 /**
  * No route requires an account. Signed-out visitors get the full app backed by
@@ -22,6 +23,13 @@ export default function App() {
       <AuthProvider>
         {/* Over every route: a share link is an arrival too. */}
         <IntroSplash />
+        {/*
+          Inside the router, so the boundary's "back to my notes" is a route
+          rather than a page load, and outside Routes so it survives whichever
+          page threw. Without it any render error unmounted the whole tree and
+          left an empty document -- a blank screen for a one-field mistake.
+        */}
+        <ErrorBoundary label="this page">
         <Routes>
           <Route path="/" element={<Navigate to="/classes" replace />} />
           <Route path="/login" element={<LoginPage />} />
@@ -58,6 +66,7 @@ export default function App() {
           <Route path="/notes/:noteRef" element={<EditorPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </AuthProvider>
     </BrowserRouter>
   )
