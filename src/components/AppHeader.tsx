@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Button } from './ui/Button'
 import { SearchDialog } from './SearchDialog'
 import { useSearchShortcut } from './useSearchShortcut'
+import { ThemeToggle } from '../theme/ThemeToggle'
 
 export function AppHeader() {
   const { profile, session, signOut, user } = useAuth()
@@ -20,6 +21,11 @@ export function AppHeader() {
         </Link>
 
         <div className="flex items-center gap-3">
+          {/* The editor has its own copy in the Docs chrome. The class list and
+              the auth pages are a separate shell, and somebody who never opens
+              a note still needs a way to turn the lights down. */}
+          <ThemeToggle className="text-ink-muted hover:bg-surface-hover" />
+
           <button
             type="button"
             onClick={openSearch}
@@ -55,7 +61,7 @@ export function AppHeader() {
               </Link>
               <Link
                 to="/signup"
-                className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
               >
                 Sign up
               </Link>

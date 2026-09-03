@@ -28,11 +28,16 @@ export function AppDocIcon({ className }: { className?: string }) {
       aria-hidden="true"
       focusable="false"
     >
+      {/* The sheet and its folded corner. Tokenised rather than the literal
+          #f5f5f5/#e6e6e6 they were: a white page icon in dark chrome is the
+          brightest thing on the screen, and this sits in the top-left corner
+          where the eye lands first. The ruled lines below stay `currentColor`,
+          so they follow the icon colour of whichever bar it is in. */}
       <path
         d="M88 24h258l82 82v382a24 24 0 0 1-24 24H88a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z"
-        fill="#f5f5f5"
+        fill="rgb(var(--c-docs-page))"
       />
-      <path d="M346 24l82 82h-82V24Z" fill="#e6e6e6" />
+      <path d="M346 24l82 82h-82V24Z" fill="rgb(var(--c-docs-page-fold))" />
       <g
         stroke="currentColor"
         strokeWidth="22"

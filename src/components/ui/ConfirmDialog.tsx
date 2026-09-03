@@ -85,7 +85,10 @@ export function ConfirmDialog({
             loading={busy}
             onClick={onConfirm}
             className={cn(
-              destructive && 'bg-red-600 hover:bg-red-700 disabled:bg-red-600/50',
+              /* `text-danger-on` overrides the primary variant's own label
+                 colour, which is tuned for the accent fill this replaces. */
+              destructive &&
+                'bg-danger text-danger-on hover:bg-danger-strong disabled:bg-danger/50',
             )}
           >
             {confirmLabel}

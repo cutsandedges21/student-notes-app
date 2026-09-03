@@ -159,7 +159,7 @@ ${detailDataError(caught)}`
             <div className="mt-6 flex justify-center gap-2">
               <Link
                 to={loginHref(`/shared/${token ?? ''}`)}
-                className="rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                className="rounded bg-accent px-4 py-2 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
               >
                 Sign in
               </Link>
@@ -192,7 +192,7 @@ ${detailDataError(caught)}`
                 setState('working')
                 setAttempt((n) => n + 1)
               }}
-              className="mt-6 rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+              className="mt-6 rounded bg-accent px-4 py-2 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
             >
               Try again
             </button>
@@ -208,7 +208,7 @@ ${detailDataError(caught)}`
             </p>
             <Link
               to="/classes"
-              className="mt-6 inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+              className="mt-6 inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
             >
               Go to my notes
             </Link>

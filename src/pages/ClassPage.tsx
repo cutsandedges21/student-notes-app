@@ -128,7 +128,7 @@ export default function ClassPage() {
               URL. */}
           <p className="mt-6 text-ink">{error ? 'Could not open this class.' : 'Class not found.'}</p>
           {error && (
-            <p role="alert" className="mt-2 text-sm text-red-600">
+            <p role="alert" className="mt-2 text-sm text-danger">
               {error}
             </p>
           )}
@@ -175,7 +175,7 @@ export default function ClassPage() {
         </div>
 
         {error && (
-          <p role="alert" className="mt-4 text-sm text-red-600">
+          <p role="alert" className="mt-4 text-sm text-danger">
             {error}
           </p>
         )}

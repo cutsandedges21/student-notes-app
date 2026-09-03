@@ -65,7 +65,7 @@ export function MenuButton({ label, items }: MenuButtonProps) {
               }}
               className={cn(
                 'block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-hover',
-                item.destructive ? 'text-red-600' : 'text-ink',
+                item.destructive ? 'text-danger' : 'text-ink',
               )}
             >
               {item.label}

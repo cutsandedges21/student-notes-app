@@ -45,6 +45,26 @@ const header = `-- =============================================================
 ${files.map((name) => `--   ${name}`).join('\n')}
 -- ============================================================================
 
+-- Close the app before running this.
+--
+-- Most statements below take an ACCESS EXCLUSIVE lock, and an open tab is a
+-- live reader holding ACCESS SHARE. Collaboration keeps a Realtime
+-- subscription open, so even an idle tab counts. The two block each other and
+-- Postgres reports:
+--
+--   ERROR: 40P01: deadlock detected
+--
+-- Nothing is broken when that happens, and nothing is half applied: every
+-- statement here is idempotent, so closing the app and running it again is the
+-- whole fix.
+--
+-- The timeout below turns a blocked migration into a clear failure rather than
+-- a wait. A statement that cannot take its lock within five seconds gives up
+-- and says so, instead of queueing behind a reader and blocking every writer
+-- that arrives after it -- which on a live database is an outage rather than a
+-- slow migration.
+set lock_timeout = '5s';
+
 `
 
 const body = files

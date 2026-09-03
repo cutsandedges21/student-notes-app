@@ -48,7 +48,7 @@ export function SaveStatus({
           role="alert"
           aria-live="assertive"
           title={message}
-          className="truncate text-sm font-medium text-red-600"
+          className="truncate text-sm font-medium text-danger"
         >
           {LABELS.failed}
           {message ? <span className="sr-only"> — {message}</span> : null}
@@ -57,7 +57,7 @@ export function SaveStatus({
           <button
             type="button"
             onClick={onRetry}
-            className="shrink-0 rounded border border-red-600 px-2 py-0.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+            className="shrink-0 rounded border border-danger px-2 py-0.5 text-sm font-medium text-danger transition-colors hover:bg-danger-wash"
           >
             Retry
           </button>

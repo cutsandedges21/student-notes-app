@@ -198,7 +198,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
         <div className="mt-4 flex gap-2">
           <Link
             to="/signup"
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
           >
             Create account
           </Link>
@@ -342,7 +342,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
         )}
 
         {error && (
-          <p role="alert" className="mt-4 text-sm text-red-600">
+          <p role="alert" className="mt-4 text-sm text-danger">
             {error}
           </p>
         )}
@@ -378,7 +378,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
         )}
 
         {actions.error && (
-          <p role="alert" className="mt-4 flex items-start gap-2 text-sm text-red-600">
+          <p role="alert" className="mt-4 flex items-start gap-2 text-sm text-danger">
             <span className="flex-1">{actions.error}</span>
             <button
               type="button"
@@ -394,7 +394,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
             the whole value of citing a note is that it can be checked, so
             "that note is not there" is the one answer worth interrupting for. */}
         {sourceError && (
-          <p role="alert" className="mt-4 flex items-start gap-2 text-sm text-red-600">
+          <p role="alert" className="mt-4 flex items-start gap-2 text-sm text-danger">
             <span className="flex-1">{sourceError}</span>
             <button
               type="button"
@@ -452,7 +452,7 @@ export function AiSidebar({ onMoveToDock }: AiSidebarProps) {
               className={cn(
                 'ml-auto grid h-7 w-7 place-items-center rounded-full transition-colors',
                 question.trim() && !busy
-                  ? 'bg-accent text-white hover:bg-accent-hover'
+                  ? 'bg-accent text-accent-on hover:bg-accent-hover'
                   : 'bg-surface-hover text-ink-faint',
               )}
             >

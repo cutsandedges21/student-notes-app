@@ -11,6 +11,38 @@
     <title>MARGIN</title>
 
     <!--
+      Theme, applied before the first paint.
+
+      This has to be a blocking inline script in <head> rather than anything
+      React does. The bundle is a module, so it is deferred by definition: by
+      the time it runs the browser has already painted, and a student who set
+      dark mode would get a full white flash on every load -- at night, on the
+      one screen they are looking at. Reading the same key the store reads
+      (THEME_STORAGE_KEY in src/theme/themeStore.ts) and setting the same class
+      means React mounts into a document that is already correct and has nothing
+      to correct.
+
+      Wrapped in try/catch because localStorage throws outright in Safari's
+      private mode, and an exception here would stop the page before the app
+      script ran at all.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('margin:theme')
+          var dark =
+            stored === 'dark' ||
+            (stored !== 'light' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) {
+            document.documentElement.classList.add('dark')
+            document.documentElement.style.colorScheme = 'dark'
+          }
+        } catch (e) {}
+      })()
+    </script>
+
+    <!--
       Document fonts offered in the editor's font menu.
 
       One stylesheet request; the actual font binaries are fetched lazily by

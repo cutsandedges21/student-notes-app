@@ -30,13 +30,13 @@ export function Input({ label, error, className, ref, ...props }: InputProps) {
         className={cn(
           'h-9 rounded border bg-surface px-3 text-sm text-ink',
           'placeholder:text-ink-faint transition-colors',
-          error ? 'border-red-500' : 'border-line-strong hover:border-ink-faint',
+          error ? 'border-danger' : 'border-line-strong hover:border-ink-faint',
           className,
         )}
         {...props}
       />
       {error && (
-        <p id={errorId} className="text-sm text-red-600">
+        <p id={errorId} className="text-sm text-danger">
           {error}
         </p>
       )}

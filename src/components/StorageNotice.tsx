@@ -36,23 +36,23 @@ export function StorageNotice({
     return (
       <div
         role="alert"
-        className="mt-6 rounded border border-red-300 bg-red-50 px-4 py-3"
+        className="mt-6 rounded border border-danger-soft bg-danger-wash px-4 py-3"
       >
-        <p className="text-sm font-medium text-red-700">
+        <p className="text-sm font-medium text-danger-strong">
           Your notes aren&rsquo;t being saved
         </p>
-        <p className="mt-1 text-sm text-red-700">{failure.message}</p>
+        <p className="mt-1 text-sm text-danger-strong">{failure.message}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={downloadGuestBackup}
-            className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            className="rounded bg-danger px-3 py-1.5 text-sm font-medium text-danger-on transition-colors hover:bg-danger-strong"
           >
             Download a backup
           </button>
           <Link
             to="/signup"
-            className="text-sm font-medium text-red-700 underline hover:no-underline"
+            className="text-sm font-medium text-danger-strong underline hover:no-underline"
           >
             Create an account instead
           </Link>

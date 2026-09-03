@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Star, MessageSquareText } from 'lucide-react'
 import { AppDocIcon, SparkIcon } from './DocsIcons'
 import { ShareMenu } from './ShareMenu'
+import { ThemeToggle } from '../theme/ThemeToggle'
 import type { ShareMode } from '../services/sharing'
 import { deleteOwnAccount } from '../services/account'
 import { SaveStatus, type SaveState } from '../components/SaveStatus'
@@ -228,7 +229,7 @@ export function DocsTitleBar({
                 aria-hidden="true"
                 className={cn(
                   'absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1',
-                  'bg-docs-active-icon font-ui text-[10px] font-medium leading-none text-white',
+                  'bg-docs-active-icon font-ui text-[10px] font-medium leading-none text-accent-on',
                 )}
               >
                 {commentCount > 9 ? '9+' : commentCount}
@@ -236,6 +237,8 @@ export function DocsTitleBar({
             )}
           </ChromeButton>
         )}
+
+        <ThemeToggle />
 
         <ShareMenu documentId={documentId} onModeChange={onShareModeChange} />
 
@@ -323,7 +326,7 @@ export function DocsTitleBar({
                       type="button"
                       disabled={deleteInput !== displayName || deleting}
                       onClick={() => void handleDeleteAccount()}
-                      className="rounded-full bg-red-600 px-3 py-1.5 font-ui text-sm text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-full bg-danger px-3 py-1.5 font-ui text-sm text-danger-on transition-colors hover:bg-danger-strong disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {deleting ? 'Deleting…' : 'Delete'}
                     </button>
@@ -348,7 +351,7 @@ export function DocsTitleBar({
                     type="button"
                     role="menuitem"
                     onClick={() => setConfirmingDelete(true)}
-                    className="rounded-full border border-red-600 px-4 py-1.5 font-ui text-sm text-red-600 transition-colors hover:bg-red-50"
+                    className="rounded-full border border-danger px-4 py-1.5 font-ui text-sm text-danger transition-colors hover:bg-danger-wash"
                   >
                     Delete
                   </button>

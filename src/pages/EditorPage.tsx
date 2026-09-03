@@ -957,7 +957,7 @@ export default function EditorPage() {
           </p>
           <Link
             to={classSlug ? `/classes/${classSlug}` : '/classes'}
-            className="mt-6 inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            className="mt-6 inline-block rounded bg-accent px-4 py-2 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
           >
             Back to my notes
           </Link>
@@ -1455,7 +1455,7 @@ export default function EditorPage() {
         <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
           <p
             role="alert"
-            className="max-w-md rounded border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 shadow-sheet"
+            className="max-w-md rounded border border-danger-soft bg-danger-wash px-4 py-2 text-sm text-danger-strong shadow-sheet"
           >
             {actionError}
             <button

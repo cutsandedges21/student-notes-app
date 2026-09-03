@@ -254,7 +254,7 @@ export function ShareMenu({
               <div className="mt-3 flex gap-2">
                 <RouterLink
                   to="/signup"
-                  className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+                  className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-accent-on transition-colors hover:bg-accent-hover"
                 >
                   Create account
                 </RouterLink>
@@ -447,7 +447,7 @@ export function ShareMenu({
           </p>
 
           {resetError && (
-            <p role="alert" className="mt-3 text-sm text-red-600">
+            <p role="alert" className="mt-3 text-sm text-danger">
               {resetError}
             </p>
           )}

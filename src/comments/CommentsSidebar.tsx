@@ -72,7 +72,7 @@ function Replies({
             <button
               type="button"
               onClick={() => onDeleteComment(comment.id)}
-              className="mt-1 inline-flex items-center gap-1 text-xs text-ink-faint transition-colors hover:text-red-600"
+              className="mt-1 inline-flex items-center gap-1 text-xs text-ink-faint transition-colors hover:text-danger"
             >
               <Trash2 size={12} aria-hidden="true" />
               Delete
@@ -304,7 +304,7 @@ export function CommentsSidebar({
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto p-3">
         {error && (
-          <p role="alert" className="mb-3 text-sm text-red-600">
+          <p role="alert" className="mb-3 text-sm text-danger">
             {error}
           </p>
         )}

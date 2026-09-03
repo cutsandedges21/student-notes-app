@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react'
 import type { PageNumberPosition } from './pagination/types'
 import { cn } from '../lib/cn'
 import { TableGridPicker } from './TableGridPicker'
+import { useTheme } from '../theme/useTheme'
 
 /**
  * The menu row: File, Edit, View, Insert, Format, Tools.
@@ -235,6 +236,16 @@ export function DocumentMenubar({
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  /* Read straight from the theme store rather than threaded down as a prop: the
+     theme is one class on <html>, and passing it through EditorPage and
+     DocumentEditor to get here would be three components carrying state none of
+     them use.
+
+     Above the `if (!editor)` guard below, with the rest of the hooks. A hook
+     after an early return is called on some renders and not others, which is
+     what breaks the order React relies on to match state to call site. */
+  const { isDark, toggle: toggleTheme } = useTheme()
+
   useEffect(() => {
     if (!openMenu) return
 
@@ -340,6 +351,10 @@ export function DocumentMenubar({
       items: [
         { label: 'Show ruler', checked: showRuler, onSelect: onToggleRuler },
         { label: 'Hide the menus', checked: compact, onSelect: onToggleCompact },
+        /* Also on the sun/moon in the title bar. Both are worth having: the
+           icon is the one people find, the menu row is where somebody who has
+           not noticed it goes looking. */
+        { label: 'Dark mode', checked: isDark, onSelect: toggleTheme },
         {
           label: 'Full screen',
           shortcut: 'Esc to exit',

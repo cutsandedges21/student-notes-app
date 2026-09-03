@@ -244,7 +244,7 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
             className={cn(
               'grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors',
               question.trim() && !busy
-                ? 'bg-accent text-white hover:bg-accent-hover'
+                ? 'bg-accent text-accent-on hover:bg-accent-hover'
                 : 'bg-surface-hover text-ink-faint',
             )}
           >

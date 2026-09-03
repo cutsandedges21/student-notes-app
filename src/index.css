@@ -12,6 +12,191 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+ * Palette
+ *
+ * Every colour token in tailwind.config.js resolves to one of these, so this
+ * block and the `.dark` block below are the whole of dark mode: the ~650
+ * utility classes across src/ are already written against the tokens and do not
+ * change.
+ *
+ * Channels rather than hex, because Tailwind composes them as
+ * `rgb(var(--c-x) / <alpha-value>)` -- which is what keeps `bg-ink/30` and
+ * `bg-accent/20` working. A `#rrggbb` value here would silently break every
+ * slash-opacity utility in the app.
+ *
+ * Deliberately NOT inside `@layer base`, for the reason documented throughout
+ * this file: Tailwind's JIT purge drops rules from a `@layer` block when it
+ * cannot find their class names as literal text in a scanned file. `dark` does
+ * currently appear in themeStore.ts, so it would survive today -- but the whole
+ * theme silently disappearing from a production build because somebody
+ * refactored one `classList.toggle` call is not a failure worth risking.
+ * ========================================================================== */
+
+:root {
+  --c-ink: 32 33 36;
+  --c-ink-muted: 95 99 104;
+  --c-ink-subtle: 112 117 122;
+  --c-ink-faint: 128 134 139;
+
+  --c-surface: 255 255 255;
+  --c-surface-backdrop: 248 249 250;
+  --c-surface-hover: 241 243 244;
+
+  --c-line: 224 224 224;
+  --c-line-strong: 218 220 224;
+
+  --c-accent: 26 115 232;
+  --c-accent-hover: 23 101 204;
+  --c-accent-subtle: 232 240 254;
+  /* Text and icons sitting *on* a filled accent surface. */
+  --c-accent-on: 255 255 255;
+
+  --c-danger: 217 48 37;
+  --c-danger-strong: 179 20 18;
+  --c-danger-soft: 244 184 180;
+  --c-danger-wash: 252 232 230;
+  --c-danger-on: 255 255 255;
+
+  --c-docs-text: 31 31 31;
+  --c-docs-icon: 68 71 70;
+  --c-docs-toolbar: 237 242 250;
+  --c-docs-hover: 221 227 234;
+  --c-docs-chrome-hover: 232 234 237;
+  --c-docs-divider: 199 199 199;
+  --c-docs-outline: 116 119 117;
+  --c-docs-chip: 194 231 255;
+  --c-docs-chip-hover: 176 221 255;
+  --c-docs-chip-text: 0 29 53;
+  --c-docs-active: 211 227 253;
+  --c-docs-pressed: 196 199 197;
+  --c-docs-active-icon: 11 87 208;
+  --c-docs-marker: 11 87 208;
+  --c-docs-ruler: 241 243 244;
+  --c-docs-tick: 189 193 198;
+  --c-docs-tick-text: 95 99 104;
+  --c-docs-avatar: 15 107 79;
+  /* The page icon in the title bar: sheet, then its folded corner. */
+  --c-docs-page: 245 245 245;
+  --c-docs-page-fold: 230 230 230;
+
+  --shadow-sheet: 0 1px 3px rgba(60, 64, 67, 0.15), 0 4px 8px rgba(60, 64, 67, 0.08);
+  --shadow-pill: 0 2px 6px rgba(60, 64, 67, 0.28);
+  --shadow-menu: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+
+  /* Highlight and comment washes, which are yellows over the page rather than
+     tokens. Dark mode cannot simply keep them: a 28%-alpha yellow over #202124
+     is a muddy olive smear. */
+  --c-comment-wash: 255 214 102;
+  --comment-wash-a: 0.28;
+  --comment-wash-active-a: 0.55;
+  --c-comment-rule: 240 178 20;
+  --c-comment-rule-active: 214 150 0;
+}
+
+/*
+ * Dark.
+ *
+ * Not an inversion. Backgrounds keep the two-step hierarchy the light theme has
+ * (#f8f9fa behind #ffffff becomes #17181a behind #202124) rather than collapsing
+ * to black, so a sheet still reads as a sheet sitting on a desk. The accent
+ * lightens from #1a73e8 to #8ab4f8 because the light-mode blue only clears 3:1
+ * against #202124 -- a link colour has to be legible, and a saturated blue on a
+ * dark ground is where dark themes usually fail.
+ *
+ * Scoped to `screen`, which is the whole of the print story.
+ *
+ * Paper is not a screen: a printer has no backlight, so a dark theme on paper is
+ * not a dark theme, it is a page-sized block of toner. Worse, browsers omit
+ * background colours by default, so the realistic outcome of printing this
+ * palette is #e8eaed text on white -- a blank-looking page, silently, from the
+ * one action the student cannot check before committing to it.
+ *
+ * Restricting the media rather than restating the light values inside
+ * `@media print` is what makes that guarantee hold: there is one copy of the
+ * light palette, on `:root`, and print gets it because these overrides simply
+ * do not apply there. A duplicated print palette would drift the first time
+ * somebody tuned a colour.
+ */
+@media screen {
+  .dark {
+    --c-ink: 232 234 237;
+    --c-ink-muted: 154 160 166;
+    --c-ink-subtle: 128 134 139;
+    --c-ink-faint: 112 117 122;
+
+    --c-surface: 32 33 36;
+    --c-surface-backdrop: 23 24 26;
+    --c-surface-hover: 41 42 45;
+
+    --c-line: 60 64 67;
+    --c-line-strong: 95 99 104;
+
+    --c-accent: 138 180 248;
+    --c-accent-hover: 174 203 250;
+    --c-accent-subtle: 31 58 95;
+    /* Dark navy, not white: the dark accent is a pale blue and white on it lands
+       near 1.9:1. */
+    --c-accent-on: 6 46 111;
+
+    --c-danger: 242 139 130;
+    --c-danger-strong: 246 174 169;
+    --c-danger-soft: 92 43 38;
+    --c-danger-wash: 45 27 26;
+    --c-danger-on: 60 15 12;
+
+    --c-docs-text: 232 234 237;
+    --c-docs-icon: 196 199 197;
+    --c-docs-toolbar: 41 42 45;
+    --c-docs-hover: 60 64 67;
+    --c-docs-chrome-hover: 48 49 52;
+    --c-docs-divider: 95 99 104;
+    --c-docs-outline: 154 160 166;
+    --c-docs-chip: 0 74 119;
+    --c-docs-chip-hover: 7 89 133;
+    --c-docs-chip-text: 194 231 255;
+    --c-docs-active: 57 75 99;
+    --c-docs-pressed: 95 99 104;
+    --c-docs-active-icon: 138 180 248;
+    --c-docs-marker: 138 180 248;
+    /*
+     * Deliberately #2a2c2f rather than the #202124 the rest of the dark palette
+     * would suggest.
+     *
+     * The ruler's job is to show where the margins are: the band is drawn in
+     * this colour and the writable width is punched out of it in `--c-surface`.
+     * At #202124 the two are the same colour and the ruler becomes a blank bar
+     * that shows nothing. What matters is the relationship, not the value --
+     * light mode is #f1f3f4 against #ffffff, a step of about 3%, so this is the
+     * same step in the other direction.
+     */
+    --c-docs-ruler: 42 44 47;
+    --c-docs-tick: 154 160 166;
+    --c-docs-tick-text: 154 160 166;
+    --c-docs-avatar: 52 168 83;
+    /* A dark sheet, so the icon reads as paper without being the brightest
+       object in the chrome. */
+    --c-docs-page: 60 64 67;
+    --c-docs-page-fold: 48 49 52;
+
+    /* Black rather than Google's grey, and heavier. A 15% grey shadow is invisible
+       against #202124; on a dark ground the edge has to be carried by the shadow
+       because there is far less contrast between a surface and its backdrop. */
+    --shadow-sheet: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.35);
+    --shadow-pill: 0 2px 6px rgba(0, 0, 0, 0.6);
+    --shadow-menu: 0 1px 2px 0 rgba(0, 0, 0, 0.6), 0 2px 8px 2px rgba(0, 0, 0, 0.4);
+
+    /* Dimmer and cooler, so a commented passage reads as marked rather than as
+       lit up. Alpha drops because a wash over a dark ground has to work with far
+       less headroom before it swamps the text it sits under. */
+    --c-comment-wash: 255 205 90;
+    --comment-wash-a: 0.16;
+    --comment-wash-active-a: 0.3;
+    --c-comment-rule: 226 168 40;
+    --c-comment-rule-active: 255 205 90;
+  }
+}
+
 @layer base {
   :root {
     /*
@@ -156,6 +341,22 @@
      for a highlight applied without a colour -- `inherit` would render it
      invisible, which reads as the button being broken. */
   @apply rounded-sm bg-yellow-200 px-0.5;
+}
+
+/*
+ * Highlighted text keeps dark ink in dark mode.
+ *
+ * A highlight is document content, not chrome: the colour is either the yellow
+ * above or one the student picked from the swatch grid, and every swatch in
+ * that grid is a light colour meant to be written on. In dark mode the body
+ * text is #e8eaed, which over a pale highlight is close to invisible -- so the
+ * highlight, and only the highlight, reverts to dark ink.
+ *
+ * This deliberately does not touch the highlight colour itself. Recolouring it
+ * would change what the student chose, and what prints.
+ */
+.dark .ProseMirror mark {
+  color: rgb(32 33 36);
 }
 
 .ProseMirror .doc-image {
@@ -392,6 +593,15 @@
 }
 
 @media print {
+  /* The palette itself is already light here -- the dark overrides are scoped
+     to `screen`. This is the matching half: `color-scheme` is set on <html> by
+     applyTheme() as an inline style, which no stylesheet rule outranks, so it
+     has to be overridden rather than simply not set. Left as `dark` it tells
+     the print renderer to darken form controls and default backgrounds. */
+  html {
+    color-scheme: light !important;
+  }
+
   /* Printing should produce the document, not the app chrome. */
   header,
   aside,
@@ -626,9 +836,9 @@
    no `strike` mark is applied, so declining needs no undo. */
 .ai-preview-original {
   text-decoration: line-through;
-  text-decoration-color: #d93025;
+  text-decoration-color: rgb(var(--c-danger));
   text-decoration-thickness: 1px;
-  color: #80868b;
+  color: rgb(var(--c-ink-faint));
 }
 
 .ai-preview {
@@ -636,10 +846,10 @@
   display: block;
   margin: 8px 0;
   padding: 10px 12px 12px;
-  border: 1px solid #1a73e8;
+  border: 1px solid rgb(var(--c-accent));
   border-left-width: 3px;
   border-radius: 4px;
-  background: #e8f0fe;
+  background: rgb(var(--c-accent-subtle));
 }
 
 /* The suggestion carries the note's own typography, so what is being offered
@@ -659,8 +869,8 @@
   gap: 4px;
   padding: 2px;
   border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px rgba(60, 64, 67, 0.15);
+  background: rgb(var(--c-surface));
+  box-shadow: var(--shadow-menu);
 }
 
 .ai-preview__button {
@@ -675,18 +885,18 @@
 }
 
 .ai-preview__button--accept {
-  background: #1a73e8;
-  color: #ffffff;
+  background: rgb(var(--c-accent));
+  color: rgb(var(--c-accent-on));
 }
 
-.ai-preview__button--accept:hover { background: #1765cc; }
+.ai-preview__button--accept:hover { background: rgb(var(--c-accent-hover)); }
 
 .ai-preview__button--decline {
   background: transparent;
-  color: #444746;
+  color: rgb(var(--c-docs-icon));
 }
 
-.ai-preview__button--decline:hover { background: #e8eaed; }
+.ai-preview__button--decline:hover { background: rgb(var(--c-docs-chrome-hover)); }
 
 /*
  * Other people's carets and selections.
@@ -819,14 +1029,14 @@
  * the editor offers with a different meaning.
  */
 .comment-highlight {
-  background-color: rgb(255 214 102 / 0.28);
-  border-bottom: 2px solid rgb(240 178 20 / 0.75);
+  background-color: rgb(var(--c-comment-wash) / var(--comment-wash-a));
+  border-bottom: 2px solid rgb(var(--c-comment-rule) / 0.75);
   cursor: pointer;
 }
 
 .comment-highlight--active {
-  background-color: rgb(255 214 102 / 0.55);
-  border-bottom-color: rgb(214 150 0);
+  background-color: rgb(var(--c-comment-wash) / var(--comment-wash-active-a));
+  border-bottom-color: rgb(var(--c-comment-rule-active));
 }
 
 /* The passage moves under the reader when a thread is selected, so the change
@@ -1055,10 +1265,8 @@ dialog[open]::backdrop {
 }
 
 .ai-dock-bar:focus-within {
-  border-color: #dadce0;
-  box-shadow:
-    rgba(60, 64, 67, 0.2) 0 1px 4px 0,
-    rgba(60, 64, 67, 0.12) 0 6px 14px 0;
+  border-color: rgb(var(--c-line-strong));
+  box-shadow: var(--shadow-menu);
 }
 
 /*

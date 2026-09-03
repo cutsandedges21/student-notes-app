@@ -139,7 +139,7 @@ export default function UpgradePage() {
                 className={cn(
                   'mt-8 rounded-full px-4 py-2.5 text-center font-ui text-sm font-medium transition-colors',
                   tier.featured
-                    ? 'bg-accent text-white hover:bg-accent-hover'
+                    ? 'bg-accent text-accent-on hover:bg-accent-hover'
                     : 'border border-line-strong text-ink hover:bg-surface-hover',
                 )}
               >

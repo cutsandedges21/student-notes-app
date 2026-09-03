@@ -99,7 +99,7 @@ export default function ClassesPage() {
         <StorageNotice hasContent={classes.length > 0} />
 
         {error && (
-          <p role="alert" className="mt-4 text-sm text-red-600">
+          <p role="alert" className="mt-4 text-sm text-danger">
             {error}
           </p>
         )}

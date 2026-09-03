@@ -101,7 +101,7 @@ export function CreateClassDialog({ open, onClose, onCreate }: CreateClassDialog
           </select>
         </div>
         {error && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
