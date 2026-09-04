@@ -18,7 +18,6 @@ interface SelectionToolbarProps {
 const ACTIONS: { mode: AiMode; label: string }[] = [
   { mode: 'IMPROVE_NOTES', label: 'Improve' },
   { mode: 'EXPLAIN', label: 'Explain' },
-  { mode: 'CHECK_NOTES', label: 'Check' },
 ]
 
 /**

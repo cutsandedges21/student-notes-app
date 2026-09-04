@@ -6,6 +6,8 @@ import type * as Y from 'yjs'
 import type { AiSelection } from '../ai/AiSidebar'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { YjsProvider, ProviderUser } from '../collab/YjsProvider'
+import { ModeToggle } from './ModeToggle'
+import { Collapse } from '../components/Collapse'
 import { PresenceBar } from '../components/PresenceBar'
 import { editorExtensions } from './extensions'
 import { renderCollaborationCaret } from './collaborationCaret'
@@ -24,8 +26,6 @@ import { Pagination } from './pagination/Pagination'
 import { PAGE_BREAK_NAME } from './pagination/PageBreak'
 import type { PageNumberPosition } from './pagination/types'
 import { Ruler } from './Ruler'
-import { ToolbarDropdown, DropdownItem } from './ToolbarDropdown'
-import { Pencil } from 'lucide-react'
 import { AI_SIDEBAR_SIDE } from '../constants/layout'
 import { imageFilesFrom } from '../services/imageUpload'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -554,9 +554,11 @@ export function DocumentEditor({
 
   return (
     <>
-      {/* Viewing mode strips the chrome entirely so the page gets the window,
-          which is the whole point of switching to it. */}
-      {editable && !fullScreen && (
+      {/* Viewing mode strips the chrome so the page gets the window, which is
+          the whole point of switching to it. Collapsed rather than unmounted:
+          the toolbar holds the editor's live state, and the height animates so
+          the switch reads as furniture moving aside. */}
+      <Collapse open={editable && !fullScreen}>
         <FormattingToolbar
           editor={editor}
           zoom={zoom}
@@ -571,7 +573,7 @@ export function DocumentEditor({
           onFind={onFind}
           onEquation={onEquation}
         />
-      )}
+      </Collapse>
       <div
         className={cn(
           'flex min-h-0 flex-1',
@@ -595,15 +597,15 @@ export function DocumentEditor({
               gap. The page below keeps its own centring: the scroll container
               reserves its scrollbar gutter on both edges, which puts the sheet
               on the column's true centre -- the same axis this row centres on. */}
-          {showRuler && editable && !fullScreen && (
-            <div className="hidden bg-surface lg:block">
+          {showRuler && (
+            <Collapse open={editable && !fullScreen} className="hidden bg-surface lg:block">
               <Ruler
                 leftMargin={pageSetup.margins.left}
                 rightMargin={pageSetup.margins.right}
                 onChange={onMarginsChange ?? (() => {})}
                 zoom={zoom}
               />
-            </div>
+            </Collapse>
           )}
 
           {/* `overflow-x` as well as `overflow-y`: the page is a fixed 816px
@@ -652,44 +654,10 @@ export function DocumentEditor({
                 </div>
               )}
 
-              <div className="pointer-events-auto rounded-full border border-line bg-surface px-1 py-1 shadow-pill transition-colors hover:bg-docs-chrome-hover">
-                <ToolbarDropdown
-                  label="Mode"
-                  // Sized for "Viewing", the longer of the two labels, which
-                  // was clipping at the previous width.
-                  width={128}
-                  triggerClassName="hover:bg-transparent"
-                  trigger={
-                    <span className="flex items-center gap-2">
-                      <Pencil size={16} className="text-docs-icon" />
-                      {editable ? 'Editing' : 'Viewing'}
-                    </span>
-                  }
-                >
-                  {(close) => (
-                    <>
-                      <DropdownItem
-                        active={editable}
-                        onSelect={() => {
-                          onEditableChange?.(true)
-                          close()
-                        }}
-                      >
-                        Editing
-                      </DropdownItem>
-                      <DropdownItem
-                        active={!editable}
-                        onSelect={() => {
-                          onEditableChange?.(false)
-                          close()
-                        }}
-                      >
-                        Viewing
-                      </DropdownItem>
-                    </>
-                  )}
-                </ToolbarDropdown>
-              </div>
+              <ModeToggle
+                editable={editable}
+                onChange={(next) => onEditableChange?.(next)}
+              />
             </div>
 
             {/* `zoom` rather than a transform: it scales the box itself, so

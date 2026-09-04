@@ -35,6 +35,7 @@ import { useComments } from '../comments/useComments'
 import { VersionHistoryPanel } from '../history/VersionHistoryPanel'
 import { useVersionHistory } from '../history/useVersionHistory'
 import { SidePanel } from '../components/SidePanel'
+import { Collapse } from '../components/Collapse'
 import { SearchDialog } from '../components/SearchDialog'
 import { useSearchShortcut } from '../components/useSearchShortcut'
 import { markdownToHtml, isInlineSuggestion, escapeHtml } from '../lib/markdown'
@@ -1230,7 +1231,7 @@ export default function EditorPage() {
     <div className="doc-shell flex h-full flex-col">
       {!compact && (
         <header className="shrink-0 bg-surface">
-          {editable && !fullScreen && <DocsTitleBar
+          <Collapse open={editable && !fullScreen}><DocsTitleBar
             documentId={doc.id}
             title={title}
             onTitleChange={handleTitleChange}
@@ -1304,7 +1305,7 @@ export default function EditorPage() {
                 }}
               />
             }
-          />}
+          /></Collapse>
         </header>
       )}
 
