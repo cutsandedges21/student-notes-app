@@ -22,3 +22,9 @@ playwright-report/
 
 # Generated single-file SQL bundle; migrations are the source of truth.
 supabase/.generated/
+
+# Vercel CLI link metadata and any env files it pulls down. The example is
+# tracked deliberately: it is the list of names, never the values.
+.vercel
+.env*
+!.env.example
