@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Search } from 'lucide-react'
+import { AppDocIcon } from '../editor/DocsIcons'
 import { useAuth } from '../contexts/AuthContext'
 import { Button } from './ui/Button'
 import { SearchDialog } from './SearchDialog'
@@ -14,9 +15,27 @@ export function AppHeader() {
   return (
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-        {/* Tracking opens up rather than tightening: the negative tracking
-            below was set for lowercase, and caps need room between them. */}
-        <Link to="/classes" className="text-sm font-medium uppercase tracking-wide text-ink">
+        {/*
+          The mark and the wordmark together, as every other header in the app
+          already has them -- the intro splash, the editor title bar, the
+          shared-note page and the plans page all pair them, and this was the
+          one place showing the name alone.
+
+          Sized to match the plans page, which is the closest thing to this: a
+          page header rather than the editor's taller chrome.
+
+          Tracking opens up rather than tightening: the negative tracking in
+          the type scale was set for lowercase, and caps need room between
+          them.
+        */}
+        <Link
+          to="/classes"
+          aria-label="Margin — go to my classes"
+          className="flex items-center gap-2 rounded text-sm font-medium uppercase tracking-wide text-ink"
+        >
+          {/* Already `aria-hidden` inside the component, which is right: the
+              link is named, and a second announcement of "Margin" is noise. */}
+          <AppDocIcon className="h-7 w-[22px]" />
           Margin
         </Link>
 
