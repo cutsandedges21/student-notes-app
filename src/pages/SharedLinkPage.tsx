@@ -145,7 +145,7 @@ ${detailDataError(caught)}`
   return (
     <div className="grid min-h-full place-items-center px-6">
       <div className="max-w-sm text-center">
-        <AppDocIcon className="mx-auto h-10 w-[32px] text-ink" />
+        <AppDocIcon className="mx-auto h-10 w-[32px]" />
 
         {state === 'signed-out' ? (
           <>

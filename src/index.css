@@ -76,9 +76,15 @@
   --c-docs-tick: 189 193 198;
   --c-docs-tick-text: 95 99 104;
   --c-docs-avatar: 15 107 79;
-  /* The page icon in the title bar: sheet, then its folded corner. */
-  --c-docs-page: 245 245 245;
-  --c-docs-page-fold: 230 230 230;
+
+  /*
+   * The app mark (AppDocIcon, and public/icon.svg which is the same drawing).
+   * Its own three colours, kept apart from the tokens above so the logo can be
+   * reasoned about -- and reverted -- on its own.
+   */
+  --c-mark-sheet: 245 245 245;
+  --c-mark-fold: 230 230 230;
+  --c-mark-line: 32 33 36;
 
   --shadow-sheet: 0 1px 3px rgba(60, 64, 67, 0.15), 0 4px 8px rgba(60, 64, 67, 0.08);
   --shadow-pill: 0 2px 6px rgba(60, 64, 67, 0.28);
@@ -174,10 +180,20 @@
     --c-docs-tick: 154 160 166;
     --c-docs-tick-text: 154 160 166;
     --c-docs-avatar: 52 168 83;
-    /* A dark sheet, so the icon reads as paper without being the brightest
-       object in the chrome. */
-    --c-docs-page: 60 64 67;
-    --c-docs-page-fold: 48 49 52;
+
+    /*
+     * The mark, inverted: dark sheet, light strokes.
+     *
+     * The sheet is #17181a rather than the #202124 of the surface it sits on,
+     * so the body of the mark reads as a shape against the bar instead of
+     * dissolving into it. The fold stays one step lighter than the sheet, which
+     * is the same relationship it has in light mode, only reversed.
+     *
+     * Revert by copying the three `:root` values here.
+     */
+    --c-mark-sheet: 23 24 26;
+    --c-mark-fold: 46 47 51;
+    --c-mark-line: 245 245 245;
 
     /* Black rather than Google's grey, and heavier. A 15% grey shadow is invisible
        against #202124; on a dark ground the edge has to be carried by the shadow
@@ -195,6 +211,125 @@
     --c-comment-rule: 226 168 40;
     --c-comment-rule-active: 255 205 90;
   }
+}
+
+/* ==========================================================================
+ * The theme change, as an animation
+ *
+ * See src/theme/themeTransition.ts for which of the two paths below runs where.
+ * Plain CSS rather than a `@layer`, like everything else in this file that is
+ * named from JavaScript: `theme-transitioning` and the view-transition
+ * pseudo-elements never appear as literal class strings in a .tsx file, so the
+ * JIT purge would drop the whole block from a production build.
+ * ========================================================================== */
+
+/*
+ * Path 1: the View Transitions API.
+ *
+ * The browser holds a texture of the page before and after, and the new one is
+ * revealed through a circle growing from the button that was clicked. Both
+ * layers are composited on the GPU, so this costs the same on a twenty-page
+ * note as on an empty one -- which is the reason to prefer it over animating
+ * colours on thousands of elements.
+ */
+html[data-theme-transition]::view-transition-old(root),
+html[data-theme-transition]::view-transition-new(root) {
+  /* The default is a cross-fade of the two textures. Turned off so the clip
+     path below is the only thing that moves; overlapping the two would show
+     the old theme ghosting through the new one inside the circle. */
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/*
+ * The browser's own group animation is turned off too.
+ *
+ * It is a 250ms linear morph of the group's size and position, which is a no-op
+ * here because the page is the same size before and after -- but it ends less
+ * than half way through the sweep, and a second animation finishing mid-gesture
+ * is one more thing that can put a seam in a motion that should be continuous.
+ */
+html[data-theme-transition]::view-transition-group(root) {
+  animation: none;
+}
+
+/* The outgoing page stays put and is uncovered from beneath. */
+html[data-theme-transition]::view-transition-old(root) {
+  z-index: 0;
+}
+
+/*
+ * The easing is deliberately mild.
+ *
+ * This was `cubic-bezier(0.2, 0, 0, 1)`, the sharp decelerate used everywhere
+ * else in the app. On a button that is right; on a circle crossing 1200px it is
+ * not. Measured, that curve put the circle at 96% of its radius after 460ms of
+ * 620 and then spent the remaining 160ms creeping the last forty pixels -- the
+ * sweep visibly stalling just short of the corner before the transition tore
+ * down and took the rest in one step.
+ *
+ * A gentler curve keeps the edge moving at a speed the eye can follow all the
+ * way out, which together with the overshoot in themeTransition.ts is what makes
+ * this read as a single gesture.
+ */
+html[data-theme-transition]::view-transition-new(root) {
+  z-index: 1;
+  animation: theme-reveal 620ms cubic-bezier(0.35, 0, 0.2, 1) forwards;
+}
+
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0 at var(--theme-origin-x) var(--theme-origin-y));
+  }
+  to {
+    clip-path: circle(var(--theme-reveal-r) at var(--theme-origin-x) var(--theme-origin-y));
+  }
+}
+
+/*
+ * The toggle is captured in the page snapshot like everything else.
+ *
+ * An earlier attempt gave it its own `view-transition-name` and hid the
+ * resulting pseudo-elements, on the theory that the hole this cuts in the root
+ * snapshot would leave the real, still-animating button showing through. It
+ * does cut the hole -- but a named element is painted *only* through its
+ * pseudo-elements for the length of the transition, so hiding them removed the
+ * button from the screen entirely for 620ms.
+ *
+ * The sun/moon therefore snaps to its new state rather than springing, whenever
+ * a view transition is going to run; see ThemeToggle.tsx. The circle starts at
+ * the button, so it passes over the icon within the first few frames and the
+ * change is read as part of the sweep.
+ */
+
+/*
+ * Path 2: no View Transitions (Firefox, and Safari before 18).
+ *
+ * Every colour property transitions at once. Applied through a class that is
+ * added for the change and taken off afterwards, because leaving a blanket
+ * colour transition on permanently would slow every hover and focus in the app
+ * to the same 420ms.
+ */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition:
+    background-color 420ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 420ms cubic-bezier(0.2, 0, 0, 1),
+    color 420ms cubic-bezier(0.2, 0, 0, 1),
+    fill 420ms cubic-bezier(0.2, 0, 0, 1),
+    stroke 420ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 420ms cubic-bezier(0.2, 0, 0, 1),
+    text-decoration-color 420ms cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+/* The toggle drives its own colours from JavaScript, a frame at a time. A CSS
+   transition on `fill` here would fight the spring for control of the same
+   attribute and leave the icon lagging its own animation. */
+html.theme-transitioning .theme-toggle,
+html.theme-transitioning .theme-toggle * {
+  transition: none !important;
 }
 
 @layer base {

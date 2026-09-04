@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react'
 import { cn } from '../lib/cn'
 import { useTheme } from './useTheme'
+import { willUseViewTransition } from './themeTransition'
 
 /**
  * The sun/moon switch.
@@ -282,16 +283,26 @@ export function ThemeToggle({ className, size = 20 }: ThemeToggleProps) {
     frame.current = requestAnimationFrame(tick)
   }, [paint])
 
-  /* Drive the spring from the store, so the icon is correct even when the theme
-     changes somewhere else -- the View menu, or the OS at sunset. */
-  useEffect(() => {
+  /*
+   * Drive the spring from the store, so the icon is correct even when the theme
+   * changes somewhere else -- the View menu, or the OS at sunset.
+   *
+   * A layout effect rather than a passive one. The store performs the change
+   * inside a view transition and flushes React synchronously so the "after"
+   * texture contains the new icon; only layout effects are guaranteed to have
+   * run by the time that flush returns.
+   */
+  useLayoutEffect(() => {
     const target = isDark ? 1 : 0
     if (flip.current.target === target) return
 
     flip.current.target = target
     twinkle.current = 0
 
-    if (reducedMotion) {
+    /* Snap, in the two cases where springing would be wrong: somebody who has
+       asked for less motion, and a page sweep that is about to photograph this
+       icon and would catch it mid-flight. */
+    if (reducedMotion || willUseViewTransition()) {
       flip.current.value = target
       flip.current.velocity = 0
       ripple.current = 0
@@ -318,6 +329,17 @@ export function ThemeToggle({ className, size = 20 }: ThemeToggleProps) {
     ensureRunning()
   }
 
+  /**
+   * Hands the page reveal the centre of this button, so the new theme sweeps
+   * out from under the pointer rather than from an arbitrary corner. Measured
+   * at click time rather than cached: the toolbar scrolls sideways on a narrow
+   * screen, so the button's position is not fixed for the life of the page.
+   */
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    toggle({ x: box.left + box.width / 2, y: box.top + box.height / 2 })
+  }
+
   return (
     <button
       type="button"
@@ -325,12 +347,16 @@ export function ThemeToggle({ className, size = 20 }: ThemeToggleProps) {
       aria-checked={isDark}
       aria-label="Dark mode"
       title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      onClick={toggle}
+      onClick={handleClick}
       onPointerDown={() => setPress(true)}
       onPointerUp={() => setPress(false)}
       onPointerLeave={() => setPress(false)}
       onPointerCancel={() => setPress(false)}
       className={cn(
+        /* `theme-toggle` is a hook for index.css, not a style: it is how the
+           button opts out of the blanket colour transition during a theme
+           change, and how it gets its own view-transition name. */
+        'theme-toggle',
         'grid h-9 w-9 shrink-0 place-items-center rounded-full',
         'text-docs-icon transition-colors hover:bg-docs-chrome-hover',
         className,

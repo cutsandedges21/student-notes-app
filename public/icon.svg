@@ -5,14 +5,32 @@
     Authored as vector rather than traced from a raster so it stays crisp at
     every favicon size and carries no background of its own - a transparent
     mark sits correctly on light and dark browser chrome alike.
-  -->
-  <path
-    d="M88 24h258l82 82v382a24 24 0 0 1-24 24H88a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z"
-    fill="#f5f5f5"
-  />
-  <path d="M346 24l82 82h-82V24Z" fill="#e6e6e6" />
 
-  <g stroke="#000" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    Inverts in dark mode, matching AppDocIcon in the app. Note the limit: a
+    favicon is rendered by the browser outside the page, so it can only follow
+    the OS setting. Somebody running a light desktop who turns just this app
+    dark will get the light tab icon; there is no way for the document to tell
+    the tab strip otherwise.
+  -->
+  <style>
+    .sheet { fill: #f5f5f5 }
+    .fold  { fill: #e6e6e6 }
+    .line  { stroke: #202124 }
+
+    @media (prefers-color-scheme: dark) {
+      .sheet { fill: #17181a }
+      .fold  { fill: #2e2f33 }
+      .line  { stroke: #f5f5f5 }
+    }
+  </style>
+
+  <path
+    class="sheet"
+    d="M88 24h258l82 82v382a24 24 0 0 1-24 24H88a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z"
+  />
+  <path class="fold" d="M346 24l82 82h-82V24Z" />
+
+  <g class="line" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
     <!-- Sheet outline, split so the folded corner reads as a separate plane. -->
     <path d="M282 24H88a24 24 0 0 0-24 24v440a24 24 0 0 0 24 24h84" />
     <path d="M224 512h192a24 24 0 0 0 24-24V310" />

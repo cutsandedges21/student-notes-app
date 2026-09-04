@@ -74,7 +74,7 @@ export function IntroSplash() {
       <div className="flex flex-col items-center">
         {/* Width tracks height at the mark's own ratio, so scaling it up
             cannot squash the page it is drawn as. */}
-        <AppDocIcon className="h-16 w-[50px] text-ink" />
+        <AppDocIcon className="h-16 w-[50px]" />
         {/* Tracking is in `em`, so the spacing between the letters grows with
             the type rather than staying at its small-text value. */}
         <p className="intro-word mt-4 font-ui text-[42px] font-medium uppercase leading-none tracking-[0.42em] text-ink">

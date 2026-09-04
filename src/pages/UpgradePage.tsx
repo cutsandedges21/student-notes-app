@@ -83,7 +83,7 @@ export default function UpgradePage() {
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex h-14 max-w-4xl items-center gap-3 px-6">
           <Link to="/classes" title="Back to my notes" className="flex items-center gap-2">
-            <AppDocIcon className="h-7 w-[22px] text-ink" />
+            <AppDocIcon className="h-7 w-[22px]" />
             <span className="font-ui text-sm font-medium text-ink">Margin</span>
           </Link>
         </div>

@@ -7,6 +7,7 @@ import {
   toggleTheme,
   type ThemePreference,
   type ResolvedTheme,
+  type TransitionOrigin,
 } from './themeStore'
 
 export interface UseTheme {
@@ -16,7 +17,12 @@ export interface UseTheme {
   resolved: ResolvedTheme
   isDark: boolean
   setPreference: (preference: ThemePreference) => void
-  toggle: () => void
+  /**
+   * `origin` is where the reveal sweeps out from, in viewport coordinates --
+   * normally the centre of the control that was clicked. Omitted, the sweep
+   * starts from the top-right corner where both toggles sit.
+   */
+  toggle: (origin?: TransitionOrigin) => void
 }
 
 export function useTheme(): UseTheme {
@@ -27,6 +33,6 @@ export function useTheme(): UseTheme {
     resolved: snapshot.resolved,
     isDark: snapshot.resolved === 'dark',
     setPreference,
-    toggle: () => void toggleTheme(),
+    toggle: (origin) => void toggleTheme(origin),
   }
 }

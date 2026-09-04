@@ -13,8 +13,16 @@
  * preference rather than computed at the call site.
  */
 
+import { flushSync } from 'react-dom'
+import {
+  runThemeChange,
+  willUseViewTransition,
+  type TransitionOrigin,
+} from './themeTransition'
+
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
+export type { TransitionOrigin }
 
 /**
  * Shared with the pre-paint script in index.html, which reads the same key
@@ -83,20 +91,62 @@ function emit() {
   for (const listener of listeners) listener()
 }
 
-function commit(preference: ThemePreference, system: ResolvedTheme) {
+/** Writes the change and tells React, with no animation around it. */
+function write(preference: ThemePreference, resolved: ResolvedTheme, sync: boolean) {
+  snapshot = { preference, resolved }
+  applyTheme(resolved)
+
+  /*
+   * A view transition captures the "after" texture the instant its callback
+   * returns, and React's updates are asynchronous. Without flushSync the toggle
+   * would re-render after that capture -- photographed still showing the old
+   * icon, then popping to the new one when the sweep ended.
+   *
+   * Only on that path. flushSync is a real cost and, worse, throws if it lands
+   * during a render; `settle` below is called from exactly that position.
+   */
+  if (sync) flushSync(emit)
+  else emit()
+}
+
+/**
+ * A theme change the user asked for, animated.
+ *
+ * Not used for the initial read: see `settle`.
+ */
+function commit(
+  preference: ThemePreference,
+  system: ResolvedTheme,
+  origin?: TransitionOrigin,
+) {
   const resolved = resolveTheme(preference, system)
   if (snapshot.preference === preference && snapshot.resolved === resolved) return
 
-  snapshot = { preference, resolved }
-  applyTheme(resolved)
-  emit()
+  runThemeChange(() => write(preference, resolved, willUseViewTransition()), origin)
+}
+
+/**
+ * The first read of stored state, applied without animation.
+ *
+ * Deliberately not `commit`. `init` runs from `getSnapshot`, which
+ * useSyncExternalStore calls *during render* -- and animating there would mean
+ * calling flushSync mid-render, which React rejects outright. There is also
+ * nothing to animate: the inline script in index.html has already put the right
+ * class on <html> before the first paint, so this is only catching the store up
+ * to a document that is already correct.
+ */
+function settle(preference: ThemePreference, system: ResolvedTheme) {
+  const resolved = resolveTheme(preference, system)
+  if (snapshot.preference === preference && snapshot.resolved === resolved) return
+
+  write(preference, resolved, false)
 }
 
 function init() {
   if (initialised) return
   initialised = true
 
-  commit(readStoredPreference(), systemTheme())
+  settle(readStoredPreference(), systemTheme())
 
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
 
@@ -125,7 +175,10 @@ export function getServerSnapshot(): ThemeSnapshot {
   return { preference: 'system', resolved: 'light' }
 }
 
-export function setPreference(preference: ThemePreference): void {
+export function setPreference(
+  preference: ThemePreference,
+  origin?: TransitionOrigin,
+): void {
   init()
   try {
     if (preference === 'system') localStorage.removeItem(THEME_STORAGE_KEY)
@@ -133,7 +186,7 @@ export function setPreference(preference: ThemePreference): void {
   } catch {
     /* See readStoredPreference: a blocked store costs persistence, not the app. */
   }
-  commit(preference, systemTheme())
+  commit(preference, systemTheme(), origin)
 }
 
 /**
@@ -144,10 +197,10 @@ export function setPreference(preference: ThemePreference): void {
  * sun is "give me light now", not "advance to the next of three states nobody
  * can see".
  */
-export function toggleTheme(): ResolvedTheme {
+export function toggleTheme(origin?: TransitionOrigin): ResolvedTheme {
   init()
   const next: ResolvedTheme = snapshot.resolved === 'dark' ? 'light' : 'dark'
-  setPreference(next)
+  setPreference(next, origin)
   return next
 }
 

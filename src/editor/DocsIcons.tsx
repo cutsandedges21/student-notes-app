@@ -28,18 +28,26 @@ export function AppDocIcon({ className }: { className?: string }) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* The sheet and its folded corner. Tokenised rather than the literal
-          #f5f5f5/#e6e6e6 they were: a white page icon in dark chrome is the
-          brightest thing on the screen, and this sits in the top-left corner
-          where the eye lands first. The ruled lines below stay `currentColor`,
-          so they follow the icon colour of whichever bar it is in. */}
+      {/*
+        The mark inverts in dark mode: a dark sheet drawn in light strokes,
+        rather than the light sheet in dark strokes it is on a white page.
+
+        Its three colours are their own tokens rather than the app's, and they
+        are the only ones the mark uses. `currentColor` is deliberately not used
+        for the strokes -- inheriting the bar's icon colour is what made the
+        outline all but vanish against the sheet behind it.
+
+        To go back to one fixed mark in both themes, set the three `--c-mark-*`
+        values in the `.dark` block of index.css to the same values as the ones
+        on `:root`. Nothing else has to change.
+      */}
       <path
         d="M88 24h258l82 82v382a24 24 0 0 1-24 24H88a24 24 0 0 1-24-24V48a24 24 0 0 1 24-24Z"
-        fill="rgb(var(--c-docs-page))"
+        fill="rgb(var(--c-mark-sheet))"
       />
-      <path d="M346 24l82 82h-82V24Z" fill="rgb(var(--c-docs-page-fold))" />
+      <path d="M346 24l82 82h-82V24Z" fill="rgb(var(--c-mark-fold))" />
       <g
-        stroke="currentColor"
+        stroke="rgb(var(--c-mark-line))"
         strokeWidth="22"
         strokeLinecap="round"
         strokeLinejoin="round"
