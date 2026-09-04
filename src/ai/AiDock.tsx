@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUp, PanelRight, Plus, SlidersHorizontal } from 'lucide-react'
+import { ArrowUp, Check, Copy, PanelRight, Plus, SlidersHorizontal } from 'lucide-react'
 import { SparkIcon } from '../editor/DocsIcons'
 import { useAiConversation } from './AiConversation'
 import { cn } from '../lib/cn'
@@ -30,6 +30,17 @@ import { cn } from '../lib/cn'
  */
 const CLOSE_DELAY_MS = 260
 
+/**
+ * How long the copy button stays acknowledged before returning to its resting
+ * label.
+ *
+ * Copying to the clipboard produces no visible effect anywhere on screen, so
+ * without an acknowledgement the only way to find out whether the click landed
+ * is to go and paste it somewhere. Long enough to be read, short enough that
+ * the button is honest about its state again before the next answer arrives.
+ */
+const COPIED_FEEDBACK_MS = 2_000
+
 interface AiDockProps {
   /** Moves the assistant into the side panel and takes this away. */
   onMoveToPanel: () => void
@@ -41,8 +52,11 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
   /** Open because it was asked for, rather than because a pointer is over it. */
   const [pinned, setPinned] = useState(false)
   const [question, setQuestion] = useState('')
+  /** The outcome of the last copy, and which answer it was about. */
+  const [copied, setCopied] = useState<{ id: string; state: 'copied' | 'failed' } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const closeTimer = useRef<number | null>(null)
+  const copyTimer = useRef<number | null>(null)
   /*
    * Centred on the sheet rather than on the window.
    *
@@ -146,6 +160,49 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
 
   const lastAnswer = [...turns].reverse().find((turn) => turn.role === 'assistant')
 
+  /*
+   * The acknowledgement is tied to the message it is about, and read back by
+   * comparing ids rather than cleared when the message changes.
+   *
+   * "Copied" is a claim about the text under the button, and that text changes
+   * without the button being touched -- a reply landing inside the
+   * acknowledgement window would otherwise inherit a tick for something that is
+   * not on the clipboard. Deriving it here means the stale state cannot be
+   * rendered even for the one frame an effect would take to clear it.
+   */
+  const copyState = copied && lastAnswer && copied.id === lastAnswer.id ? copied.state : 'idle'
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current !== null) window.clearTimeout(copyTimer.current)
+    },
+    [],
+  )
+
+  /**
+   * Puts the whole answer on the clipboard.
+   *
+   * The whole answer, not the selection: the card scrolls, so dragging across
+   * a long reply means dragging against an auto-scrolling box, and the point of
+   * the button is to make that unnecessary.
+   */
+  async function copyAnswer() {
+    const answer = lastAnswer
+    if (!answer?.content) return
+
+    if (copyTimer.current !== null) window.clearTimeout(copyTimer.current)
+    try {
+      await navigator.clipboard.writeText(answer.content)
+      setCopied({ id: answer.id, state: 'copied' })
+    } catch (caught) {
+      // Denied permission, or an insecure origin. Either way the clipboard was
+      // not written, and saying so beats a tick that lies about it.
+      console.error('[AiDock] could not copy the answer:', caught)
+      setCopied({ id: answer.id, state: 'failed' })
+    }
+    copyTimer.current = window.setTimeout(() => setCopied(null), COPIED_FEEDBACK_MS)
+  }
+
   return createPortal(
     <div
       id="ai-dock"
@@ -175,13 +232,41 @@ export function AiDock({ onMoveToPanel }: AiDockProps) {
               </p>
             </div>
           )}
-          <button
-            type="button"
-            onClick={onMoveToPanel}
-            className="mt-3 text-xs font-medium text-accent hover:underline"
-          >
-            Open in side panel
-          </button>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onMoveToPanel}
+              className="text-xs font-medium text-accent hover:underline"
+            >
+              Open in side panel
+            </button>
+            {/* Nothing to copy when the card is showing an error rather than
+                an answer. */}
+            {!error && lastAnswer && (
+              <button
+                type="button"
+                onClick={copyAnswer}
+                title="Copy the whole answer"
+                // The label carries the outcome, so a screen reader hears the
+                // same acknowledgement the tick gives everyone else.
+                aria-label={
+                  copyState === 'copied'
+                    ? 'Answer copied'
+                    : copyState === 'failed'
+                      ? 'Could not copy the answer'
+                      : 'Copy the whole answer'
+                }
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+                  'transition-colors hover:bg-docs-chrome-hover',
+                  copyState === 'failed' ? 'text-danger' : 'text-docs-icon',
+                )}
+              >
+                {copyState === 'copied' ? <Check size={14} /> : <Copy size={14} />}
+                {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
